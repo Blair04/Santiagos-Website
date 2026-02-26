@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import './navigation.dart';
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class ManageFurniture extends StatefulWidget {
+  const ManageFurniture({super.key});
+
+  static String get routeName => '/manage-furniture';
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<ManageFurniture> createState() => _ManageFurnitureState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _ManageFurnitureState extends State<ManageFurniture> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -16,11 +18,10 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         backgroundColor: Color.fromRGBO(215, 199, 187, 1.0),
         title: const Text(
-          "Santiago's furniture"
+          "Manage Furniture",
         )
       ),
-
-      //drawer: Navigation(),
+      drawer: Navigation(),
     );
   }
 }

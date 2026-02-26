@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import './navigation.dart';
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+
+class Preorder extends StatefulWidget {
+  const Preorder({super.key});
+
+  static String get routeName => '/preorder';
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<Preorder> createState() => _PreorderState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _PreorderState extends State<Preorder> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -16,11 +19,10 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         backgroundColor: Color.fromRGBO(215, 199, 187, 1.0),
         title: const Text(
-          "Santiago's furniture"
+          "Pre Order Detail",
         )
       ),
-
-      //drawer: Navigation(),
+      drawer: Navigation(),
     );
   }
 }

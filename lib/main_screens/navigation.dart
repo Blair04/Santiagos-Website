@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/main_screens/home_screen.dart';
+import 'package:flutter_application_1/main_screens/manage_receipt_screen.dart';
+import 'package:flutter_application_1/main_screens/preorder_screen.dart';
+import 'package:flutter_application_1/main_screens/manage_furniture.dart';
 
 class Navigation extends StatelessWidget{
   @override
@@ -7,7 +9,6 @@ class Navigation extends StatelessWidget{
     return Drawer(
       child: Column(
         children: <Widget>[
-          //ElevatedButton(onPressed: (){Navigator.of(context).pushNamed(ManageReceipt.RouteName)}), child: Text('Go to manage receipt'))
           Container(
             width: double.infinity,
             padding: EdgeInsets.all(20),
@@ -32,21 +33,25 @@ class Navigation extends StatelessWidget{
               ),
             ),
           ),
+          //Manage Receipt navigation
           ListTile(
             leading: Icon(Icons.receipt),
             title: Text('Manage Receipts'),
-            onTap: null,//(){ Navigator.pushNamed(context, HomeScreen.routeName);},
+            onTap: (){ Navigator.of(context).pushNamed(ManageReceipt.routeName);},
           ),
+          //pre order detail navigation
           ListTile(
             leading: Icon(Icons.receipt_long),
             title: Text('Pre Order Detail'),
-            onTap: null,
+            onTap: (){ Navigator.of(context).pushNamed(Preorder.routeName);},
           ),
+          //Manage Product navigation
           ListTile(
             leading: Icon(Icons.local_shipping),
             title: Text('Manage Products'),
-            onTap: null,
+            onTap: (){ Navigator.of(context).pushNamed(ManageFurniture.routeName);},
           ),
+          //Logout navigation
           ListTile(
             leading: Icon(Icons.person),
             title: Text('Logout'),

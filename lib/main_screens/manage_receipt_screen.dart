@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import './navigation.dart';
 
 class ManageReceipt extends StatefulWidget {
   const ManageReceipt({super.key});
+
+  static String get routeName => '/manage-receipt';
 
   @override
   State<ManageReceipt> createState() => _ManageReceiptState();
@@ -16,9 +19,10 @@ class _ManageReceiptState extends State<ManageReceipt> {
       appBar: AppBar(
         backgroundColor: Color.fromRGBO(215, 199, 187, 1.0),
         title: const Text(
-          "Santiago's furniture"
+          "Manage Receipts",
         )
       ),
+      drawer: Navigation(),
     );
   }
 }
