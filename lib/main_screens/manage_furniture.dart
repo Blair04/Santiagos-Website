@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import './navigation.dart';
 class ManageFurniture extends StatefulWidget {
   const ManageFurniture({super.key});
 
@@ -14,14 +13,6 @@ class _ManageFurnitureState extends State<ManageFurniture> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Color.fromRGBO(249, 246, 241, 1.0),
-
-      appBar: AppBar(
-        backgroundColor: Color.fromRGBO(215, 199, 187, 1.0),
-        title: const Text(
-          "Manage Furniture",
-        )
-      ),
-      drawer: Navigation(),
     );
   }
 }

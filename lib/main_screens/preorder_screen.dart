@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import './navigation.dart';
 
 class Preorder extends StatefulWidget {
   const Preorder({super.key});
@@ -15,14 +14,6 @@ class _PreorderState extends State<Preorder> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Color.fromRGBO(249, 246, 241, 1.0),
-
-      appBar: AppBar(
-        backgroundColor: Color.fromRGBO(215, 199, 187, 1.0),
-        title: const Text(
-          "Pre Order Detail",
-        )
-      ),
-      drawer: Navigation(),
     );
   }
 }
