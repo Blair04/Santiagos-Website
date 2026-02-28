@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-
-// 1. Ensure these imports are active in your project
 import 'package:flutter_application_1/main_screens/manage_receipt_screen.dart';
 import 'package:flutter_application_1/main_screens/preorder_screen.dart';
 import 'package:flutter_application_1/main_screens/manage_furniture.dart';
-
 
 class MainResponsivePage extends StatefulWidget {
   const MainResponsivePage({Key? key}) : super(key: key);
@@ -16,7 +13,6 @@ class MainResponsivePage extends StatefulWidget {
 class _MainResponsivePageState extends State<MainResponsivePage> {
   int _selectedIndex = 0;
 
-  // 2. Map the index to your actual screen classes
   late final List<Widget> _screens = [
     const ManageReceipt(),   
     const Preorder(),        
