@@ -1,37 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class Furniture {
-  final String name;
-  final String description;
-  final double price;
-  final String category;
-  final String color;
-  final String imageUrl;
-  final String arModelUrl;
-
-  Furniture({
-    required this.name,
-    required this.description,
-    required this.price,
-    required this.category,
-    required this.color,
-    required this.imageUrl,
-    required this.arModelUrl,
-  });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'furniture_name': name,
-      'description': description,
-      'price': price,
-      'category': category,
-      'color': color,
-      'image_url': imageUrl,
-      'ar_model_url': arModelUrl,
-    };
-  }
-}
+final _supabase = Supabase.instance.client;
 
 class AddFurniture extends StatefulWidget {
   const AddFurniture({super.key});
@@ -48,12 +18,16 @@ class _AddFurnitureState extends State<AddFurniture> {
   final _descController = TextEditingController();
   final _imageUrlController = TextEditingController();
   final _arUrlController = TextEditingController();
+  final _colorController = TextEditingController();
 
-  String _selectedCategory = 'Chair';
-  final List<String> _categories = ['Chair', 'Table', 'Sofa', 'Bed', 'Cabinet'];
+  List<Map<String, dynamic>> _categories = [];
+  int? _selectedCategoryId;
 
-  String _selectedColor = 'Oak';
-  final List<String> _colors = ['Oak', 'Walnut', 'White', 'Black', 'Grey', 'Beige', 'Mahogany'];
+  @override
+  void initState() {
+    super.initState();
+    _loadCategories();
+  }
 
   @override
   void dispose() {
@@ -62,8 +36,31 @@ class _AddFurnitureState extends State<AddFurniture> {
     _descController.dispose();
     _imageUrlController.dispose();
     _arUrlController.dispose();
+    _colorController.dispose();
     super.dispose();
   }
+
+  Future<void> _loadCategories() async {
+  try {
+    final response = await _supabase
+        .from('CATEGORY')
+        .select('category_id, category_name')
+        .order('category_name', ascending: true);
+
+    print('✅ Categories: $response'); // check this in console
+
+    if (mounted) {
+      setState(() {
+        _categories = List<Map<String, dynamic>>.from(response);
+        if (_categories.isNotEmpty) {
+          _selectedCategoryId = _categories.first['category_id'];
+        }
+      });
+    }
+  } catch (e) {
+    print('❌ Error: $e'); // check this in console
+  }
+}
 
   Future<void> _saveProduct() async {
     if (_formKey.currentState!.validate()) {
@@ -76,35 +73,40 @@ class _AddFurnitureState extends State<AddFurniture> {
       );
 
       try {
-        final newProduct = Furniture(
-          name: _nameController.text,
-          description: _descController.text,
-          price: double.parse(_priceController.text),
-          category: _selectedCategory,
-          color: _selectedColor,
-          imageUrl: _imageUrlController.text,
-          arModelUrl: _arUrlController.text,
-        );
-
-        // Insert into the furniture table
-        await Supabase.instance.client
+        final furnitureResponse = await _supabase
             .from('FURNITURE')
-            .insert(newProduct.toMap());
+            .insert({
+              'furniture_name': _nameController.text.trim(),
+              'description': _descController.text.trim(),
+              'price': double.parse(_priceController.text.trim()),
+              'category_id': _selectedCategoryId,
+              'created_at': DateTime.now().toIso8601String(),
+            })
+            .select('furniture_id')
+            .single();
+
+        final int newFurnitureId = furnitureResponse['furniture_id'];
+
+        await _supabase.from('VARIANT').insert({
+          'furniture_id': newFurnitureId,
+          'color': _colorController.text.trim(),
+          'ar_model_url': _arUrlController.text.trim(),
+          'image_url': _imageUrlController.text.trim(),
+        });
 
         if (mounted) {
-          Navigator.pop(context); 
-          Navigator.pop(context); 
-          
+          Navigator.pop(context);
+          Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Furniture successfully added to the catalog!'),
+              content: Text('Furniture successfully added!'),
               backgroundColor: Colors.green,
             ),
           );
         }
       } catch (e) {
         if (mounted) {
-          Navigator.pop(context); 
+          Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Error: ${e.toString()}'),
@@ -129,6 +131,7 @@ class _AddFurnitureState extends State<AddFurniture> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // drag handle
               Center(
                 child: Container(
                   width: 40,
@@ -140,6 +143,7 @@ class _AddFurnitureState extends State<AddFurniture> {
                 ),
               ),
               const SizedBox(height: 16),
+
               const Text(
                 'Add New Furniture',
                 style: TextStyle(
@@ -150,72 +154,91 @@ class _AddFurnitureState extends State<AddFurniture> {
               ),
               const SizedBox(height: 20),
 
-              // Product Name
+              // furniture_name
               TextFormField(
                 controller: _nameController,
                 decoration: _buildInputDecoration('Product Name'),
-                validator: (v) => v!.isEmpty ? 'Please enter a name' : null,
+                validator: (v) =>
+                    v!.isEmpty ? 'Please enter a name' : null,
               ),
               const SizedBox(height: 12),
 
-              // Price
+              // price
               TextFormField(
                 controller: _priceController,
                 keyboardType: TextInputType.number,
-                decoration: _buildInputDecoration('Price').copyWith(prefixText: '₱ '),
-                validator: (v) => double.tryParse(v!) == null ? 'Invalid price' : null,
+                decoration:
+                    _buildInputDecoration('Price').copyWith(prefixText: '₱ '),
+                validator: (v) =>
+                    double.tryParse(v!) == null ? 'Invalid price' : null,
               ),
               const SizedBox(height: 12),
 
-              // Category and Color Dropdown
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _selectedCategory,
+              // category dropdown — shows empty until loaded, then fills in
+              _categories.isEmpty
+                  ? const TextField(
+                      enabled: false,
+                      decoration: InputDecoration(
+                        labelText: 'Category (loading...)',
+                        border: OutlineInputBorder(),
+                      ),
+                    )
+                  : DropdownButtonFormField<int>(
+                      value: _selectedCategoryId,
                       decoration: _buildInputDecoration('Category'),
-                      items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                      onChanged: (v) => setState(() => _selectedCategory = v!),
+                      items: _categories.map((c) {
+                        return DropdownMenuItem<int>(
+                          value: c['category_id'] as int,
+                          child: Text(c['category_name']),
+                        );
+                      }).toList(),
+                      onChanged: (v) {
+                        if (v != null) {
+                          setState(() => _selectedCategoryId = v);
+                        }
+                      },
+                      validator: (v) =>
+                          v == null ? 'Select a category' : null,
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _selectedColor,
-                      decoration: _buildInputDecoration('Color'),
-                      items: _colors.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                      onChanged: (v) => setState(() => _selectedColor = v!),
-                    ),
-                  ),
-                ],
-              ),
               const SizedBox(height: 12),
 
-              // Image URL
-              TextFormField(
-                controller: _imageUrlController,
-                decoration: _buildInputDecoration('Image URL (HTTPS link)'),
-                validator: (v) => v!.isEmpty ? 'Image link is required' : null,
-              ),
-              const SizedBox(height: 12),
-
-              // AR Model URL
-              TextFormField(
-                controller: _arUrlController,
-                decoration: _buildInputDecoration('AR Model URL (.glb)'),
-                validator: (v) => v!.isEmpty ? 'AR link is required' : null,
-              ),
-              const SizedBox(height: 12),
-
-              // Description
+              // description
               TextFormField(
                 controller: _descController,
                 maxLines: 2,
                 decoration: _buildInputDecoration('Description'),
               ),
+              const SizedBox(height: 20),
+
+              // color
+              TextFormField(
+                controller: _colorController,
+                decoration: _buildInputDecoration('Color'),
+                validator: (v) =>
+                    v!.isEmpty ? 'Please enter a color' : null,
+              ),
+              const SizedBox(height: 12),
+
+              // image_url
+              TextFormField(
+                controller: _imageUrlController,
+                decoration:
+                    _buildInputDecoration('Image URL (HTTPS link)'),
+                validator: (v) =>
+                    v!.isEmpty ? 'Image link is required' : null,
+              ),
+              const SizedBox(height: 12),
+
+              // ar_model_url
+              TextFormField(
+                controller: _arUrlController,
+                decoration: _buildInputDecoration('AR Model URL (.glb)'),
+                validator: (v) =>
+                    v!.isEmpty ? 'AR link is required' : null,
+              ),
               const SizedBox(height: 24),
 
-              // Save Button
+              // save button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -224,11 +247,16 @@ class _AddFurnitureState extends State<AddFurniture> {
                     backgroundColor: Colors.brown,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                   child: const Text(
                     'Save Product',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
@@ -248,7 +276,8 @@ class _AddFurnitureState extends State<AddFurniture> {
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: Colors.brown, width: 2),
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     );
   }
 }
