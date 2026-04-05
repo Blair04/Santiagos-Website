@@ -48,6 +48,8 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                 ],
               )
             ),
+            
+            
             Expanded(
               child: StreamBuilder<List<Map<String, dynamic>>>(
                 stream: Supabase.instance.client.from('FURNITURE').stream(primaryKey: ['id']), 
