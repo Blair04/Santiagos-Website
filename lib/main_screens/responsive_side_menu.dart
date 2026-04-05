@@ -4,7 +4,7 @@ import 'package:flutter_application_1/main_screens/preorder_screen.dart';
 import 'package:flutter_application_1/main_screens/manage_furniture.dart';
 
 class MainResponsivePage extends StatefulWidget {
-  const MainResponsivePage({Key? key}) : super(key: key);
+  const MainResponsivePage({super.key});
 
   @override
   State<MainResponsivePage> createState() => _MainResponsivePageState();
@@ -26,13 +26,10 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
         bool isHugeScreen = constraints.maxWidth > 900;
 
         return Scaffold(
-          appBar: isHugeScreen ? null : AppBar(
-            backgroundColor: const Color.fromRGBO(215, 199, 187, 1.0),
-            title: _screens[_selectedIndex] is ManageReceipt
-                ? const Text('Manage Receipts')
-                : _screens[_selectedIndex] is Preorder
-                    ? const Text('Pre Order Detail')
-                    : const Text('Manage Furniture'),
+          appBar: isHugeScreen ? null 
+          : AppBar(
+            backgroundColor: const Color(0xFFFAF6F2),
+            title: _getTitle(),
           ),
           
           drawer: isHugeScreen 
@@ -52,8 +49,12 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
               if (isHugeScreen)
                 Container(
                   width: 300,
-                  decoration: BoxDecoration(
-                    border: Border(right: BorderSide(color: Colors.grey.shade300)),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFD8C8BC),
+                    borderRadius: BorderRadius.only(
+                      topRight: Radius.circular(30),
+                      bottomRight: Radius.circular(30),
+                    ),
                   ),
                   child: NavigationContent(
                     selectedIndex: _selectedIndex,
@@ -63,16 +64,18 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
                   ),
                 ),
                 
-              Expanded(
-                child: SelectionArea(
-                  child: _screens[_selectedIndex],
-                ),
-              ),
+             Expanded(child: _screens[_selectedIndex]),
             ],
           ),
         );
       },
     );
+  }
+
+  Widget _getTitle() {
+    if (_selectedIndex == 0) return const Text('Manage Receipts');
+    if (_selectedIndex == 1) return const Text('Pre Order Detail');
+    return const Text('Manage Furniture');
   }
 }
 
@@ -81,10 +84,54 @@ class NavigationContent extends StatelessWidget {
   final int selectedIndex;
 
   const NavigationContent({
-    Key? key, 
+    super.key, 
     required this.onItemSelected, 
     required this.selectedIndex
-  }) : super(key: key);
+  });
+
+ Widget buildNavItem({
+    required String title,
+    required IconData icon,
+    required int index,
+  }) {
+    bool isSelected = selectedIndex == index;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () => onItemSelected(index),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.white : Colors.transparent,
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  color: isSelected ? Colors.black : Colors.black54,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: isSelected ? Colors.black : Colors.black54,
+                    fontWeight: isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -104,49 +151,60 @@ class NavigationContent extends StatelessWidget {
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
                   image: DecorationImage(
-                    image: NetworkImage('https://scontent.fmnl17-2.fna.fbcdn.net/v/t39.30808-6/565319095_1128726149395643_8094975518170593394_n.jpg?_nc_cat=107&ccb=1-7&_nc_sid=1d70fc&_nc_eui2=AeGz9tN_4QcssA9gLdQBlksJYjb1YxdZG-tiNvVjF1kb6yiQ6KbwAJHEAet14aFFr74ooX1wDQJD7eSmbPiCxfny&_nc_ohc=jQMUXikHHUQQ7kNvwH2I4w4&_nc_oc=Adona025_4vRnBtQbeyfW4bOrMiYs0vqGfuQfiFBzSiw9p0mTuIYYB0LHzrmCpT-At4&_nc_zt=23&_nc_ht=scontent.fmnl17-2.fna&_nc_gid=j7H6Hiv0v7mFDXh9AOAynw&_nc_ss=7a32e&oh=00_AfxYRjLcagNaBR_giPvPFAB2zdBzVfPaX0VdanNevYRrZw&oe=69C5BCF2'),
+                    image: AssetImage('assets/images/santiago_logo.jpg'),
                     fit: BoxFit.cover,
                   ),
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 20),
             ],
           ),
         ),
         
-        // navigation items
-        ListTile(
-          selected: selectedIndex == 0,
-          selectedTileColor: Colors.brown.withOpacity(0.1),
-          leading: const Icon(Icons.receipt),
-          title: const Text('Manage Receipts'),
-          onTap: () => onItemSelected(0),
+        // navigations
+        buildNavItem(
+          title: 'Manage Receipts',
+          icon: Icons.receipt,
+          index: 0,
         ),
-        ListTile(
-          selected: selectedIndex == 1,
-          selectedTileColor: Colors.brown.withOpacity(0.1),
-          leading: const Icon(Icons.receipt_long),
-          title: const Text('Pre Order Detail'),
-          onTap: () => onItemSelected(1),
+        buildNavItem(
+          title: 'Pre Order Detail',
+          icon: Icons.receipt_long,
+          index: 1,
         ),
-        ListTile(
-          selected: selectedIndex == 2,
-          selectedTileColor: Colors.brown.withOpacity(0.1),
-          leading: const Icon(Icons.local_shipping),
-          title: const Text('Manage Products'),
-          onTap: () => onItemSelected(2),
+        buildNavItem(
+          title: 'Manage Products',
+          icon: Icons.local_shipping,
+          index: 2,
         ),
-        
+
         const Spacer(),
         const Divider(),
-        
-        ListTile(
-          leading: const Icon(Icons.person, color: Colors.redAccent),
-          title: const Text('Logout', style: TextStyle(color: Colors.redAccent)),
-          onTap: () {
-            // log out logic here
-          },
+
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: GestureDetector(
+            onTap: () {},
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.person, color: Colors.redAccent),
+                  SizedBox(width: 12),
+                  Text(
+                    'Logout',
+                    style: TextStyle(color: Colors.redAccent),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
+
         const SizedBox(height: 10),
       ],
     );

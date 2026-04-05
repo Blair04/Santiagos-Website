@@ -172,7 +172,7 @@ class _AddFurnitureState extends State<AddFurniture> {
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _selectedCategory,
+                      initialValue: _selectedCategory,
                       decoration: _buildInputDecoration('Category'),
                       items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                       onChanged: (v) => setState(() => _selectedCategory = v!),
@@ -181,7 +181,7 @@ class _AddFurnitureState extends State<AddFurniture> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _selectedColor,
+                      initialValue: _selectedColor,
                       decoration: _buildInputDecoration('Color'),
                       items: _colors.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                       onChanged: (v) => setState(() => _selectedColor = v!),

@@ -4,6 +4,8 @@ import 'package:flutter_application_1/main_screens/preorder_screen.dart';
 import 'package:flutter_application_1/main_screens/manage_furniture.dart';
 
 class Navigation extends StatelessWidget{
+  const Navigation({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Drawer(
