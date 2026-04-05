@@ -72,7 +72,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                               flex: 1,
                               child: Center(
                                 child: item['image_url'] != null 
-                                ? Image.network(item['image_url'], height: 40, fit: BoxFit.cover)
+                                ? Image.network(item['image_url'] ?? 'No Image', height: 40, fit: BoxFit.cover)
                                 : Icon(Icons.chair, color: Colors.brown[200]),
                               )
                             ),
