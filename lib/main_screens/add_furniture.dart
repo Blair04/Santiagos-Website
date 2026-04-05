@@ -21,7 +21,7 @@ class _AddFurnitureState extends State<AddFurniture> {
   final _colorController = TextEditingController();
 
   List<Map<String, dynamic>> _categories = [];
-  int? _selectedCategoryId;
+  int _selectedCategoryId = 0;
 
   @override
   void initState() {
@@ -41,29 +41,30 @@ class _AddFurnitureState extends State<AddFurniture> {
   }
 
   Future<void> _loadCategories() async {
-  try {
-    final response = await _supabase
-        .from('CATEGORY')
-        .select('category_id, category_name')
-        .order('category_name', ascending: true);
+    try {
+      final response = await _supabase
+          .from('CATEGORY')
+          .select('category_id, category_name')
+          .order('category_name', ascending: true);
 
-    print('✅ Categories: $response'); // check this in console
+      print('✅ Categories: $response');
 
-    if (mounted) {
-      setState(() {
-        _categories = List<Map<String, dynamic>>.from(response);
-        if (_categories.isNotEmpty) {
-          _selectedCategoryId = _categories.first['category_id'];
-        }
-      });
+      if (mounted) {
+        setState(() {
+          _categories = List<Map<String, dynamic>>.from(response);
+          if (_categories.isNotEmpty) {
+            _selectedCategoryId = _categories.first['category_id'];
+          }
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading categories: $e');
     }
-  } catch (e) {
-    print('❌ Error: $e'); // check this in console
   }
-}
 
   Future<void> _saveProduct() async {
     if (_formKey.currentState!.validate()) {
+      // show loading
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -73,6 +74,7 @@ class _AddFurnitureState extends State<AddFurniture> {
       );
 
       try {
+        // Step 1: insert into FURNITURE → get back furniture_id
         final furnitureResponse = await _supabase
             .from('FURNITURE')
             .insert({
@@ -85,18 +87,26 @@ class _AddFurnitureState extends State<AddFurniture> {
             .select('furniture_id')
             .single();
 
-        final int newFurnitureId = furnitureResponse['furniture_id'];
+        print('✅ Furniture inserted: $furnitureResponse');
 
-        await _supabase.from('VARIANT').insert({
-          'furniture_id': newFurnitureId,
-          'color': _colorController.text.trim(),
-          'ar_model_url': _arUrlController.text.trim(),
-          'image_url': _imageUrlController.text.trim(),
-        });
+       // final int newFurnitureId = furnitureResponse['furniture_id'];
+
+        // Step 2: insert into VARIANT using the new furniture_id
+        final variantResponse = await _supabase
+            .from('VARIANT')
+            .insert({
+             // 'furniture_id': newFurnitureId,  // FK to FURNITURE
+              'color': _colorController.text.trim(),
+              'image_url': _imageUrlController.text.trim(),
+              'ar_model_url': _arUrlController.text.trim(),
+            })
+            .select();
+
+        print('✅ Variant inserted: $variantResponse');
 
         if (mounted) {
-          Navigator.pop(context);
-          Navigator.pop(context);
+          Navigator.pop(context); // close loading
+          Navigator.pop(context); // close sheet
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Furniture successfully added!'),
@@ -105,8 +115,9 @@ class _AddFurnitureState extends State<AddFurniture> {
           );
         }
       } catch (e) {
+        print('❌ Error saving: $e');
         if (mounted) {
-          Navigator.pop(context);
+          Navigator.pop(context); // close loading
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Error: ${e.toString()}'),
@@ -154,6 +165,11 @@ class _AddFurnitureState extends State<AddFurniture> {
               ),
               const SizedBox(height: 20),
 
+              // ── FURNITURE table fields ──────────────
+
+              _sectionLabel('Furniture Details'),
+              const SizedBox(height: 12),
+
               // furniture_name
               TextFormField(
                 controller: _nameController,
@@ -167,14 +183,14 @@ class _AddFurnitureState extends State<AddFurniture> {
               TextFormField(
                 controller: _priceController,
                 keyboardType: TextInputType.number,
-                decoration:
-                    _buildInputDecoration('Price').copyWith(prefixText: '₱ '),
+                decoration: _buildInputDecoration('Price')
+                    .copyWith(prefixText: '₱ '),
                 validator: (v) =>
                     double.tryParse(v!) == null ? 'Invalid price' : null,
               ),
               const SizedBox(height: 12),
 
-              // category dropdown — shows empty until loaded, then fills in
+              // category_id — from CATEGORY table
               _categories.isEmpty
                   ? const TextField(
                       enabled: false,
@@ -210,7 +226,12 @@ class _AddFurnitureState extends State<AddFurniture> {
               ),
               const SizedBox(height: 20),
 
-              // color
+              // ── VARIANT table fields ────────────────
+
+              _sectionLabel('Variant Details'),
+              const SizedBox(height: 12),
+
+              // color → VARIANT.color
               TextFormField(
                 controller: _colorController,
                 decoration: _buildInputDecoration('Color'),
@@ -219,17 +240,16 @@ class _AddFurnitureState extends State<AddFurniture> {
               ),
               const SizedBox(height: 12),
 
-              // image_url
+              // image_url → VARIANT.image_url
               TextFormField(
                 controller: _imageUrlController,
-                decoration:
-                    _buildInputDecoration('Image URL (HTTPS link)'),
+                decoration: _buildInputDecoration('Image URL (HTTPS link)'),
                 validator: (v) =>
                     v!.isEmpty ? 'Image link is required' : null,
               ),
               const SizedBox(height: 12),
 
-              // ar_model_url
+              // ar_model_url → VARIANT.ar_model_url
               TextFormField(
                 controller: _arUrlController,
                 decoration: _buildInputDecoration('AR Model URL (.glb)'),
@@ -263,6 +283,17 @@ class _AddFurnitureState extends State<AddFurniture> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String label) {
+    return Text(
+      label,
+      style: const TextStyle(
+        fontSize: 13,
+        color: Colors.grey,
+        fontWeight: FontWeight.w500,
       ),
     );
   }
