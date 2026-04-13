@@ -26,6 +26,7 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
         bool isHugeScreen = constraints.maxWidth > 900;
 
         return Scaffold(
+          backgroundColor: const Color(0xFFFAF6F2), 
           appBar: isHugeScreen ? null 
           : AppBar(
             backgroundColor: const Color(0xFFFAF6F2),
@@ -47,20 +48,20 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
           body: Row(
             children: [
               if (isHugeScreen)
-                Container(
-                  width: 300,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFD8C8BC),
-                    borderRadius: BorderRadius.only(
-                      topRight: Radius.circular(30),
-                      bottomRight: Radius.circular(30),
-                    ),
+                ClipRRect( 
+                  borderRadius: const BorderRadius.only(
+                    topRight: Radius.circular(30),
+                    bottomRight: Radius.circular(30),
                   ),
-                  child: NavigationContent(
-                    selectedIndex: _selectedIndex,
-                    onItemSelected: (index) {
-                      setState(() => _selectedIndex = index);
-                    },
+                  child: Container(
+                    width: 300,
+                    color: const Color(0xFFD8C8BC),
+                    child: NavigationContent(
+                      selectedIndex: _selectedIndex,
+                      onItemSelected: (index) {
+                        setState(() => _selectedIndex = index);
+                      },
+                    ),
                   ),
                 ),
                 
@@ -137,7 +138,6 @@ class NavigationContent extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: <Widget>[
-        //for logo
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(20),
@@ -161,7 +161,6 @@ class NavigationContent extends StatelessWidget {
           ),
         ),
         
-        // navigations
         buildNavItem(
           title: 'Manage Receipts',
           icon: Icons.receipt,
