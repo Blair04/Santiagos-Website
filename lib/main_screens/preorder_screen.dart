@@ -12,6 +12,23 @@ class Preorder extends StatefulWidget {
 class _PreorderState extends State<Preorder> {
   final TextEditingController _searchController = TextEditingController();
 
+  List<String> searchHistory = [];
+  String query = "";
+
+  void addToHistory(String value) {
+    if (value.isNotEmpty && !searchHistory.contains(value)) {
+      setState(() {
+        searchHistory.insert(0, value);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -21,100 +38,90 @@ class _PreorderState extends State<Preorder> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const SizedBox(height: 20),
+
             Center(
               child: Text(
                 "POPULAR ITEMS",
                 style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
                   letterSpacing: 2,
-                  color: Color.fromARGB(255, 56, 37, 29),
+                  color: Colors.brown,
                 ),
               ),
             ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 25),
 
-            // para sa search
-            const Text(
-              "Search",
-              style: TextStyle(fontSize: 14, color: Colors.black54),
-            ),
-            const SizedBox(height: 8),
-
-            SizedBox(
-              width: 280,
-              height: 40,
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.brown.shade200),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.brown),
-                  ),
+            TextField(
+              controller: _searchController,
+              onSubmitted: (value) {
+                addToHistory(value);
+              },
+              onChanged: (value) {
+                setState(() {
+                  query = value;
+                });
+              },
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search),
+                hintText: "Search furniture...",
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
                 ),
               ),
             ),
 
             const SizedBox(height: 40),
 
-            // for table
-            Center(
-              child: Container(
-                width: 1000,
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 8,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(20),
+            Expanded(
+              child: Center(
+                child: Container(
+                  width: double.infinity,
+                  constraints: const BoxConstraints(maxWidth: 900),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 6,
+                        offset: Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      // HEADER
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 14, horizontal: 16),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: Colors.black26,
+                              width: 1.5,
+                            ),
+                          ),
                         ),
-                        border: Border(
-                          bottom: BorderSide(
-                            color: Colors.brown.shade300,
-                            width: 2, // 
+                        child: Row(
+                          children: const [
+                            Expanded(child: HeaderText("Furniture")),
+                            Expanded(child: HeaderText("Frequency")),
+                          ],
+                        ),
+                      ),
+
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            children: _filteredRows(),
                           ),
                         ),
                       ),
-                      child: Row(
-                        mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
-                        children: const [
-                          Text("Furniture",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w500)),
-                          Text("Frequency",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w500)),
-                        ],
-                      ),
-                    ),
-
-                    _buildRow("Model B", "39"),
-                    _buildRow("Model A", "32"),
-                    _buildRow("Model D", "19"),
-                    _buildRow("Model C", "14"),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -124,24 +131,73 @@ class _PreorderState extends State<Preorder> {
     );
   }
 
+  List<Widget> _filteredRows() {
+    final data = [
+      ["Model B", "39"],
+      ["Model A", "32"],
+      ["Model D", "19"],
+      ["Model C", "14"],
+    ];
+
+    final filtered = data.where((row) {
+      return row.any((element) =>
+          element.toLowerCase().contains(query.toLowerCase()));
+    }).toList();
+
+    return filtered
+        .map((row) => _buildRow(row[0], row[1]))
+        .toList();
+  }
+
   Widget _buildRow(String name, String freq) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: const BoxDecoration(
         border: Border(
-          top: BorderSide(
-            color: Colors.brown.shade100,
-            width: 0.8, 
-          ),
+          bottom: BorderSide(color: Colors.black12),
         ),
-      ),                                                                                                                                     
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(name),
-          Text(freq),
+          Expanded(child: CellText(name)),
+          Expanded(child: CellText(freq)),
         ],
       ),
+    );
+  }
+}
+
+class HeaderText extends StatelessWidget {
+  final String text;
+  const HeaderText(this.text, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+}
+
+class CellText extends StatelessWidget {
+  final String text;
+  const CellText(this.text, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      textAlign: TextAlign.center,
+      overflow: TextOverflow.ellipsis,
+      maxLines: 1,
     );
   }
 }
