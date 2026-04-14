@@ -63,71 +63,69 @@ class _AddFurnitureState extends State<AddFurniture> {
   }
 
   Future<void> _saveProduct() async {
-    if (_formKey.currentState!.validate()) {
-      // show loading
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(color: Colors.brown),
-        ),
-      );
+  if (_formKey.currentState!.validate()) {
+    // 1. Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(color: Colors.brown),
+      ),
+    );
 
-      try {
-        // Step 1: insert into FURNITURE → get back furniture_id
-        final furnitureResponse = await _supabase
-            .from('FURNITURE')
-            .insert({
-              'furniture_name': _nameController.text.trim(),
-              'description': _descController.text.trim(),
-              'price': double.parse(_priceController.text.trim()),
-              'category_id': _selectedCategoryId,
-              'created_at': DateTime.now().toIso8601String(),
-            })
-            .select('furniture_id')
-            .single();
+    try {
+      // STEP 1: Insert into FURNITURE and get the generated ID back
+      final furnitureResponse = await _supabase
+          .from('FURNITURE')
+          .insert({
+            'furniture_name': _nameController.text.trim(),
+            'description': _descController.text.trim(),
+            'price': double.parse(_priceController.text.trim()),
+            'category_id': _selectedCategoryId,
+            'created_at': DateTime.now().toIso8601String(),
+          })
+          .select('furniture_id') // This tells Supabase to return the ID
+          .single(); // Expecting only one row back
 
-        print('✅ Furniture inserted: $furnitureResponse');
+      // Extract the ID from the response
+      final int newFurnitureId = furnitureResponse['furniture_id'];
+      print('✅ Furniture created with ID: $newFurnitureId');
 
-       // final int newFurnitureId = furnitureResponse['furniture_id'];
+      // STEP 2: Insert into VARIANT using that furniture_id
+      final variantResponse = await _supabase
+          .from('VARIANT')
+          .insert({
+            'furniture_id': newFurnitureId, // This links the variant to the furniture
+            'color': _colorController.text.trim(),
+            'image_url': _imageUrlController.text.trim(),
+            'ar_model_url': _arUrlController.text.trim(),
+          })
+          .select('variant_id') // Optional: get the variant ID back
+          .single();
+        final int newVariantId = variantResponse['variant_id'];
+      print('✅ Variant inserted successfully ID: $newVariantId for Furniture ID: $newFurnitureId');
 
-        // Step 2: insert into VARIANT using the new furniture_id
-        final variantResponse = await _supabase
-            .from('VARIANT')
-            .insert({
-             // 'furniture_id': newFurnitureId,  // FK to FURNITURE
-              'color': _colorController.text.trim(),
-              'image_url': _imageUrlController.text.trim(),
-              'ar_model_url': _arUrlController.text.trim(),
-            })
-            .select();
-
-        print('✅ Variant inserted: $variantResponse');
-
-        if (mounted) {
-          Navigator.pop(context); // close loading
-          Navigator.pop(context); // close sheet
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Furniture successfully added!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        print('❌ Error saving: $e');
-        if (mounted) {
-          Navigator.pop(context); // close loading
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: ${e.toString()}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        Navigator.pop(context); // Close the BottomSheet/Screen
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Furniture and Variant added!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Detailed Error: $e');
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
       }
     }
   }
+}
 
   @override
   Widget build(BuildContext context) {
