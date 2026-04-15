@@ -14,9 +14,9 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
   int _selectedIndex = 0;
 
   late final List<Widget> _screens = [
-    const ManageReceipt(),   
-    const Preorder(),        
+    const ManageReceipt(),         
     const ManageFurniture(), 
+    const Preorder(),  
   ];
 
   @override
@@ -75,8 +75,8 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
 
   Widget _getTitle() {
     if (_selectedIndex == 0) return const Text('Manage Receipts');
-    if (_selectedIndex == 1) return const Text('Pre Order Detail');
-    return const Text('Manage Furniture');
+    if (_selectedIndex == 1) return const Text('Manage Products');
+    return const Text('Top Products');
   }
 }
 
@@ -167,15 +167,16 @@ class NavigationContent extends StatelessWidget {
           index: 0,
         ),
         buildNavItem(
-          title: 'Pre Order Detail',
-          icon: Icons.receipt_long,
+          title: 'Manage Products',
+          icon: Icons.local_shipping,
           index: 1,
         ),
         buildNavItem(
-          title: 'Manage Products',
-          icon: Icons.local_shipping,
+          title: 'Top Products',
+          icon: Icons.receipt_long,
           index: 2,
         ),
+        
 
         const Spacer(),
         const Divider(),
