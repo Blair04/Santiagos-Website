@@ -108,12 +108,10 @@ class _AddFurnitureState extends State<AddFurniture> {
     );
 
     try {
-      // 1. Upload to "images" bucket
       final String imageFileName = '${DateTime.now().millisecondsSinceEpoch}_$_imageName';
       await _supabase.storage.from('images').uploadBinary(imageFileName, _imageBytes!);
       final String imageUrl = _supabase.storage.from('images').getPublicUrl(imageFileName);
 
-      // 2. Upload to "3d_models" bucket
       String arUrl = '';
       if (_modelBytes != null) {
         final String modelFileName = '${DateTime.now().millisecondsSinceEpoch}_$_modelName';
@@ -121,7 +119,6 @@ class _AddFurnitureState extends State<AddFurniture> {
         arUrl = _supabase.storage.from('3d_models').getPublicUrl(modelFileName);
       }
 
-      // 3. Insert into FURNITURE
       final furnitureResponse = await _supabase.from('FURNITURE').insert({
         'furniture_name': _nameController.text.trim(),
         'description': _descController.text.trim(),
@@ -132,7 +129,6 @@ class _AddFurnitureState extends State<AddFurniture> {
 
       final int newFurnitureId = furnitureResponse['furniture_id'];
 
-      // 4. Insert into VARIANT
       await _supabase.from('VARIANT').insert({
         'furniture_id': newFurnitureId,
         'color': _colorController.text.trim(),
@@ -141,8 +137,8 @@ class _AddFurnitureState extends State<AddFurniture> {
       });
 
       if (mounted) {
-        Navigator.pop(context); // Close loading
-        Navigator.pop(context); // Close sheet
+        Navigator.pop(context);
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Product added successfully!'), backgroundColor: Colors.green),
         );
