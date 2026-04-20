@@ -250,6 +250,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
                         decoration: const BoxDecoration(
                           border: Border(bottom: BorderSide(color: Colors.black26, width: 1.5)),
                         ),
+                        //
                         child: Row(
                           children: const [
                             Expanded(child: HeaderText("ID")),

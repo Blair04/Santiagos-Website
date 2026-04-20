@@ -61,7 +61,6 @@ class _ManageFurnitureState extends State<ManageFurniture> {
     }
   }
 
-  // safely parse price regardless of type coming from Supabase
   String _formatPrice(dynamic price) {
     if (price == null) return '0.00';
     if (price is double) return price.toStringAsFixed(2);
@@ -94,7 +93,6 @@ class _ManageFurnitureState extends State<ManageFurniture> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // header row
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -119,11 +117,8 @@ class _ManageFurnitureState extends State<ManageFurniture> {
               ],
             ),
             const SizedBox(height: 30),
-
-            // table header
             Container(
-              padding:
-                  const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
               decoration: BoxDecoration(
                 color: Colors.brown.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(8),
@@ -141,13 +136,10 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                 ],
               ),
             ),
-
-            // table body
             Expanded(
               child: _isLoading
                   ? const Center(
-                      child:
-                          CircularProgressIndicator(color: Colors.brown),
+                      child: CircularProgressIndicator(color: Colors.brown),
                     )
                   : _products.isEmpty
                       ? const Center(
@@ -160,30 +152,20 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                           itemCount: _products.length,
                           itemBuilder: (context, index) {
                             final item = _products[index];
+                            final category = item['CATEGORY'] as Map<String, dynamic>?;
+                            final categoryName = category?['category_name'] ?? 'N/A';
 
-                            // safely get category
-                            final category =
-                                item['CATEGORY'] as Map<String, dynamic>?;
-                            final categoryName =
-                                category?['category_name'] ?? 'N/A';
-
-                            // safely get first variant
                             final variantRaw = item['VARIANT'];
                             Map<String, dynamic>? firstVariant;
-                            if (variantRaw is List &&
-                                variantRaw.isNotEmpty) {
-                              firstVariant = Map<String, dynamic>.from(
-                                  variantRaw.first);
+                            if (variantRaw is List && variantRaw.isNotEmpty) {
+                              firstVariant = Map<String, dynamic>.from(variantRaw.first);
                             }
 
-                            final color =
-                                firstVariant?['color']?.toString() ?? 'N/A';
-                            final imageUrl =
-                                firstVariant?['image_url']?.toString();
+                            final color = firstVariant?['color']?.toString() ?? 'N/A';
+                            final imageUrl = firstVariant?['image_url']?.toString();
 
                             return Container(
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 10, horizontal: 8),
+                              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
                               decoration: BoxDecoration(
                                 border: Border(
                                   bottom: BorderSide(
@@ -193,71 +175,61 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                               ),
                               child: Row(
                                 children: [
-                                  // image
+                                  // UPDATED WEB-COMPATIBLE IMAGE DISPLAY
                                   Expanded(
                                     flex: 1,
                                     child: Center(
-                                      child: imageUrl != null &&
-                                              imageUrl.isNotEmpty
-                                          ? Image.network(
-                                              imageUrl,
-                                              height: 40,
-                                              fit: BoxFit.cover,
-                                              errorBuilder:
-                                                  (_, __, ___) => Icon(
-                                                Icons.chair,
-                                                color: Colors.brown[200],
+                                      child: imageUrl != null && imageUrl.isNotEmpty
+                                          ? ClipRRect(
+                                              borderRadius: BorderRadius.circular(4),
+                                              child: Image.network(
+                                                imageUrl,
+                                                height: 40,
+                                                width: 40,
+                                                fit: BoxFit.cover,
+                                                // Handles CORS or broken links on Web
+                                                errorBuilder: (context, error, stackTrace) {
+                                                  return Icon(Icons.broken_image,
+                                                      color: Colors.brown[200], size: 24);
+                                                },
+                                                loadingBuilder: (context, child, loadingProgress) {
+                                                  if (loadingProgress == null) return child;
+                                                  return Center(
+                                                    child: SizedBox(
+                                                      height: 15,
+                                                      width: 15,
+                                                      child: CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                        color: Colors.brown[200],
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
                                               ),
                                             )
-                                          : Icon(Icons.chair,
-                                              color: Colors.brown[200]),
+                                          : Icon(Icons.chair, color: Colors.brown[200]),
                                     ),
                                   ),
-
-                                  _dataItem(
-                                    item['furniture_name']?.toString() ??
-                                        'No Name',
-                                    flex: 2,
-                                  ),
-
-                                  // fixed price formatting
-                                  _dataItem(
-                                    '₱ ${_formatPrice(item['price'])}',
-                                    flex: 1,
-                                  ),
-
+                                  _dataItem(item['furniture_name']?.toString() ?? 'No Name', flex: 2),
+                                  _dataItem('₱ ${_formatPrice(item['price'])}', flex: 1),
                                   _dataItem(categoryName, flex: 2),
                                   _dataItem(color, flex: 1),
-                                  _dataItem(
-                                    item['description']?.toString() ??
-                                        'No Description',
-                                    flex: 3,
-                                  ),
-
-                                  // edit button
+                                  _dataItem(item['description']?.toString() ?? 'No Description', flex: 3),
                                   Expanded(
                                     flex: 1,
                                     child: Center(
                                       child: IconButton(
-                                        icon: const Icon(Icons.edit_note,
-                                            color: Colors.brown),
-                                        onPressed: () {
-                                          // edit logic here
-                                        },
+                                        icon: const Icon(Icons.edit_note, color: Colors.brown),
+                                        onPressed: () {},
                                       ),
                                     ),
                                   ),
-
-                                  // archive button
                                   Expanded(
                                     flex: 1,
                                     child: Center(
                                       child: IconButton(
-                                        icon: const Icon(Icons.archive,
-                                            color: Colors.brown),
-                                        onPressed: () {
-                                          // archive logic here
-                                        },
+                                        icon: const Icon(Icons.archive, color: Colors.brown),
+                                        onPressed: () {},
                                       ),
                                     ),
                                   ),
