@@ -17,6 +17,9 @@ class _ManageFurnitureState extends State<ManageFurniture> {
   List<Map<String, dynamic>> _products = [];
   bool _isLoading = true;
 
+  // Track selected colors for each furniture row to make dropdowns interactive
+  final Map<int, String> _selectedColors = {};
+
   @override
   void initState() {
     super.initState();
@@ -63,13 +66,8 @@ class _ManageFurnitureState extends State<ManageFurniture> {
 
   String _formatPrice(dynamic price) {
     if (price == null) return '0.00';
-    if (price is double) return price.toStringAsFixed(2);
-    if (price is int) return price.toDouble().toStringAsFixed(2);
-    if (price is String) {
-      final parsed = double.tryParse(price);
-      return parsed != null ? parsed.toStringAsFixed(2) : '0.00';
-    }
-    return '0.00';
+    final parsed = double.tryParse(price.toString()) ?? 0.0;
+    return parsed.toStringAsFixed(2);
   }
 
   void _openAddProductSheet(BuildContext context) {
@@ -117,6 +115,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
               ],
             ),
             const SizedBox(height: 30),
+            // HEADER
             Container(
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
               decoration: BoxDecoration(
@@ -138,44 +137,37 @@ class _ManageFurnitureState extends State<ManageFurniture> {
             ),
             Expanded(
               child: _isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(color: Colors.brown),
-                    )
+                  ? const Center(child: CircularProgressIndicator(color: Colors.brown))
                   : _products.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No products yet. Tap + Add New Product.',
-                            style: TextStyle(color: Colors.brown),
-                          ),
-                        )
+                      ? const Center(child: Text('No products yet.', style: TextStyle(color: Colors.brown)))
                       : ListView.builder(
                           itemCount: _products.length,
                           itemBuilder: (context, index) {
                             final item = _products[index];
-                            final category = item['CATEGORY'] as Map<String, dynamic>?;
-                            final categoryName = category?['category_name'] ?? 'N/A';
+                            final int furnitureId = item['furniture_id'];
+                            final categoryName = item['CATEGORY']?['category_name'] ?? 'N/A';
+                            final List<dynamic> variants = item['VARIANT'] is List ? item['VARIANT'] : [];
 
-                            final variantRaw = item['VARIANT'];
-                            Map<String, dynamic>? firstVariant;
-                            if (variantRaw is List && variantRaw.isNotEmpty) {
-                              firstVariant = Map<String, dynamic>.from(variantRaw.first);
-                            }
+                            // Manage the local state of which variant is being "previewed"
+                            final String currentSelection = _selectedColors[furnitureId] ?? 
+                                (variants.isNotEmpty ? variants.first['color'].toString() : 'N/A');
 
-                            final color = firstVariant?['color']?.toString() ?? 'N/A';
-                            final imageUrl = firstVariant?['image_url']?.toString();
+                            // Find the data for the currently selected variant
+                            final currentVariant = variants.firstWhere(
+                              (v) => v['color'].toString() == currentSelection,
+                              orElse: () => variants.isNotEmpty ? variants.first : null,
+                            );
+
+                            final imageUrl = currentVariant?['image_url']?.toString();
 
                             return Container(
                               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
                               decoration: BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: Colors.brown.withOpacity(0.1),
-                                  ),
-                                ),
+                                border: Border(bottom: BorderSide(color: Colors.brown.withOpacity(0.1))),
                               ),
                               child: Row(
                                 children: [
-                                  // UPDATED WEB-COMPATIBLE IMAGE DISPLAY
+                                  // IMAGE COLUMN
                                   Expanded(
                                     flex: 1,
                                     child: Center(
@@ -184,37 +176,46 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                                               borderRadius: BorderRadius.circular(4),
                                               child: Image.network(
                                                 imageUrl,
-                                                height: 40,
-                                                width: 40,
-                                                fit: BoxFit.cover,
-                                                // Handles CORS or broken links on Web
-                                                errorBuilder: (context, error, stackTrace) {
-                                                  return Icon(Icons.broken_image,
-                                                      color: Colors.brown[200], size: 24);
-                                                },
-                                                loadingBuilder: (context, child, loadingProgress) {
-                                                  if (loadingProgress == null) return child;
-                                                  return Center(
-                                                    child: SizedBox(
-                                                      height: 15,
-                                                      width: 15,
-                                                      child: CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                        color: Colors.brown[200],
-                                                      ),
-                                                    ),
-                                                  );
-                                                },
+                                                height: 40, width: 40, fit: BoxFit.cover,
+                                                errorBuilder: (context, error, stackTrace) => 
+                                                    const Icon(Icons.broken_image, color: Colors.grey, size: 24),
                                               ),
                                             )
-                                          : Icon(Icons.chair, color: Colors.brown[200]),
+                                          : const Icon(Icons.chair, color: Colors.grey),
                                     ),
                                   ),
                                   _dataItem(item['furniture_name']?.toString() ?? 'No Name', flex: 2),
                                   _dataItem('₱ ${_formatPrice(item['price'])}', flex: 1),
                                   _dataItem(categoryName, flex: 2),
-                                  _dataItem(color, flex: 1),
+
+                                  // DROPDOWN COLOR COLUMN
+                                  Expanded(
+                                    flex: 1,
+                                    child: variants.length > 1
+                                        ? DropdownButtonHideUnderline(
+                                            child: DropdownButton<String>(
+                                              value: currentSelection,
+                                              isExpanded: true,
+                                              icon: const Icon(Icons.arrow_drop_down, size: 16, color: Colors.brown),
+                                              style: const TextStyle(color: Colors.black87, fontSize: 12),
+                                              items: variants.map((v) {
+                                                return DropdownMenuItem<String>(
+                                                  value: v['color'].toString(),
+                                                  child: Center(child: Text(v['color'].toString())),
+                                                );
+                                              }).toList(),
+                                              onChanged: (String? newValue) {
+                                                if (newValue != null) {
+                                                  setState(() => _selectedColors[furnitureId] = newValue);
+                                                }
+                                              },
+                                            ),
+                                          )
+                                        : _dataItem(currentSelection, flex: 1),
+                                  ),
+
                                   _dataItem(item['description']?.toString() ?? 'No Description', flex: 3),
+                                  
                                   Expanded(
                                     flex: 1,
                                     child: Center(
@@ -252,11 +253,7 @@ Widget _headerItem(String title, {int flex = 1}) {
     child: Text(
       title,
       textAlign: TextAlign.center,
-      style: const TextStyle(
-        color: Colors.brown,
-        fontWeight: FontWeight.bold,
-        fontSize: 14,
-      ),
+      style: const TextStyle(color: Colors.brown, fontWeight: FontWeight.bold, fontSize: 13),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     ),
@@ -269,7 +266,7 @@ Widget _dataItem(String text, {int flex = 1}) {
     child: Text(
       text,
       textAlign: TextAlign.center,
-      style: const TextStyle(color: Colors.black87, fontSize: 13),
+      style: const TextStyle(color: Colors.black87, fontSize: 12),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     ),
