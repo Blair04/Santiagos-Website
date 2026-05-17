@@ -36,10 +36,12 @@ class _ManageFurnitureState extends State<ManageFurniture> {
             description,
             price,
             created_at,
+            category_id,
             CATEGORY (
               category_name
             ),
             VARIANT (
+              variant_id,
               color,
               image_url,
               ar_model_url
@@ -80,6 +82,39 @@ class _ManageFurnitureState extends State<ManageFurniture> {
       ),
       builder: (context) => const AddFurniture(),
     ).then((_) => _loadProducts());
+  }
+
+  // --- NEW: EDIT PRODUCT LOGIC ---
+  void _openEditProductSheet(BuildContext context, Map<String, dynamic> item, Map<String, dynamic>? currentVariant) {
+    if (currentVariant == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot edit product without an active variant data properties.'))
+      );
+      return;
+    }
+
+    // Construct the payload map matching expected properties inside add_furniture.dart edit logic
+    final Map<String, dynamic> editPayload = {
+      'furniture_id': item['furniture_id'],
+      'furniture_name': item['furniture_name'],
+      'price': item['price'],
+      'description': item['description'],
+      'category_id': item['category_id'],
+      'variant_id': currentVariant['variant_id'],
+      'color': currentVariant['color'],
+      'image_url': currentVariant['image_url'],
+      'ar_model_url': currentVariant['ar_model_url'],
+    };
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => AddFurniture(editProduct: editPayload),
+    ).then((_) => _loadProducts()); // Refresh list when modal pops back off
   }
 
   @override
@@ -221,7 +256,8 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                                     child: Center(
                                       child: IconButton(
                                         icon: const Icon(Icons.edit_note, color: Colors.brown),
-                                        onPressed: () {},
+                                        // WIRED UP CALLING TRIGGER METHOD
+                                        onPressed: () => _openEditProductSheet(context, item, currentVariant),
                                       ),
                                     ),
                                   ),

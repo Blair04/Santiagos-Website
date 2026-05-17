@@ -14,8 +14,7 @@ class ManageReceipt extends StatefulWidget {
 }
 
 class _ManageReceiptState extends State<ManageReceipt> {
-  final TextEditingController _searchController =
-      TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   String query = "";
   String selectedTab = 'Pending';
@@ -38,8 +37,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
   // FETCH DATA
   Future<void> _fetchSupabaseData() async {
     try {
-      final response =
-          await _supabase.from('RECEIPT').select('''
+      final response = await _supabase.from('RECEIPT').select('''
         receipt_id,
         issued_at,
         preorder_id,
@@ -57,9 +55,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
 
       if (mounted) {
         setState(() {
-          _allReceipts =
-              List<Map<String, dynamic>>.from(response);
-
+          _allReceipts = List<Map<String, dynamic>>.from(response);
           _isLoading = false;
         });
       }
@@ -80,8 +76,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
     try {
       await _supabase
           .from('PREORDER')
-          .update({'status': newStatus})
-          .eq('preorder_id', preorderId);
+          .update({'status': newStatus}).eq('preorder_id', preorderId);
 
       if (mounted) {
         Navigator.pop(context);
@@ -94,8 +89,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content:
-                Text("Receipt marked as $newStatus"),
+            content: Text("Receipt marked as $newStatus"),
           ),
         );
       }
@@ -109,8 +103,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
     Map<String, dynamic> receipt,
     Map<String, dynamic> preorder,
   ) {
-    final List itemsList =
-        preorder['PREORDER_ITEMS'] ?? [];
+    final List itemsList = preorder['PREORDER_ITEMS'] ?? [];
 
     showDialog(
       context: context,
@@ -118,34 +111,25 @@ class _ManageReceiptState extends State<ManageReceipt> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(25),
         ),
-
         backgroundColor: const Color(0xFFF9F6F1),
-
         content: SizedBox(
           width: 550,
-
           child: Column(
             mainAxisSize: MainAxisSize.min,
-
             children: [
               Row(
-                mainAxisAlignment:
-                    MainAxisAlignment.spaceBetween,
-
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     "Receipt ID: ${receipt['receipt_id']}",
-
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                       color: Colors.black54,
                     ),
                   ),
-
                   Text(
                     "Email: ${preorder['CUSTOMER']['gmail']}",
-
                     style: const TextStyle(
                       color: Colors.black45,
                       fontSize: 14,
@@ -153,46 +137,34 @@ class _ManageReceiptState extends State<ManageReceipt> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 5),
-
               Align(
                 alignment: Alignment.centerLeft,
-
                 child: Text(
                   "Date: ${receipt['issued_at'].toString().substring(0, 10)}",
-
                   style: const TextStyle(
                     color: Colors.black45,
                   ),
                 ),
               ),
-
               const Divider(
                 height: 40,
                 thickness: 1.2,
               ),
-
               Row(
-                mainAxisAlignment:
-                    MainAxisAlignment.spaceBetween,
-
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: const [
                   Text(
                     "Items:",
-
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Colors.black87,
                     ),
                   ),
-
                   Padding(
                     padding: EdgeInsets.only(right: 20),
-
                     child: Text(
                       "Available:",
-
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.black87,
@@ -201,75 +173,48 @@ class _ManageReceiptState extends State<ManageReceipt> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 15),
-
               Flexible(
                 child: ListView.builder(
                   shrinkWrap: true,
                   itemCount: itemsList.length,
-
                   itemBuilder: (context, index) {
                     final item = itemsList[index];
-
-                    final furnitureName =
-                        item['FURNITURE'] != null
-                            ? item['FURNITURE']
-                                ['furniture_name']
-                            : "Unknown Furniture";
+                    final furnitureName = item['FURNITURE'] != null
+                        ? item['FURNITURE']['furniture_name']
+                        : "Unknown Furniture";
 
                     return Padding(
-                      padding:
-                          const EdgeInsets.symmetric(
+                      padding: const EdgeInsets.symmetric(
                         vertical: 8.0,
                       ),
-
                       child: Row(
-                        mainAxisAlignment:
-                            MainAxisAlignment
-                                .spaceBetween,
-
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Row(
                             children: [
                               const Icon(
-                                Icons
-                                    .check_box_outlined,
+                                Icons.check_box_outlined,
                                 size: 20,
                               ),
-
-                              const SizedBox(
-                                  width: 10),
-
+                              const SizedBox(width: 10),
                               Text(
                                 "$furnitureName (${item['quantity']})",
                               ),
                             ],
                           ),
-
                           Container(
-                            padding:
-                                const EdgeInsets
-                                    .symmetric(
+                            padding: const EdgeInsets.symmetric(
                               horizontal: 10,
                               vertical: 4,
                             ),
-
-                            decoration:
-                                BoxDecoration(
+                            decoration: BoxDecoration(
                               border: Border.all(
-                                color:
-                                    Colors.black12,
+                                color: Colors.black12,
                               ),
-
-                              borderRadius:
-                                  BorderRadius
-                                      .circular(
-                                          15),
-
+                              borderRadius: BorderRadius.circular(15),
                               color: Colors.white,
                             ),
-
                             child: Row(
                               children: const [
                                 Text(
@@ -278,10 +223,8 @@ class _ManageReceiptState extends State<ManageReceipt> {
                                     fontSize: 12,
                                   ),
                                 ),
-
                                 Icon(
-                                  Icons
-                                      .keyboard_arrow_down,
+                                  Icons.keyboard_arrow_down,
                                   size: 16,
                                 ),
                               ],
@@ -293,87 +236,50 @@ class _ManageReceiptState extends State<ManageReceipt> {
                   },
                 ),
               ),
-
               const SizedBox(height: 40),
-
               Row(
-                mainAxisAlignment:
-                    MainAxisAlignment.end,
-
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   ElevatedButton(
-                    onPressed: () =>
-                        _updateStatus(
+                    onPressed: () => _updateStatus(
                       receipt['preorder_id'],
                       'Approved',
                     ),
-
-                    style:
-                        ElevatedButton.styleFrom(
-                      backgroundColor:
-                          const Color(
-                              0xFFE6DED6),
-
-                      foregroundColor:
-                          Colors.brown,
-
-                      shape:
-                          RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(
-                                10),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE6DED6),
+                      foregroundColor: Colors.brown,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
                       ),
-
                       elevation: 0,
                     ),
-
                     child: const Text(
                       "Approve Receipt",
                     ),
                   ),
-
                   const SizedBox(width: 12),
-
                   ElevatedButton(
-                    onPressed: () =>
-                        _updateStatus(
+                    onPressed: () => _updateStatus(
                       receipt['preorder_id'],
                       'Denied',
                     ),
-
-                    style:
-                        ElevatedButton.styleFrom(
-                      backgroundColor:
-                          const Color(
-                              0xFFB06A6A),
-
-                      foregroundColor:
-                          Colors.white,
-
-                      shape:
-                          RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(
-                                10),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFB06A6A),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
                       ),
-
                       elevation: 0,
                     ),
-
                     child: const Text(
                       "Deny Receipt",
                     ),
                   ),
-
                   const SizedBox(width: 12),
-
                   TextButton(
-                    onPressed: () =>
-                        Navigator.pop(context),
-
+                    onPressed: () => Navigator.pop(context),
                     child: const Text(
                       "Close",
-
                       style: TextStyle(
                         color: Colors.black38,
                       ),
@@ -389,341 +295,203 @@ class _ManageReceiptState extends State<ManageReceipt> {
   }
 
   // STYLE TAB
-Widget _buildChromeTab(String title) {
+  Widget _buildChromeTab(String title) {
+    int count = 0;
 
-  int count = 0;
+    for (var receipt in _allReceipts) {
+      final dynamic preorderRaw = receipt['PREORDER'];
+      Map<String, dynamic>? preorder;
 
-  for (var receipt in _allReceipts) {
+      if (preorderRaw is List && preorderRaw.isNotEmpty) {
+        preorder = preorderRaw.first;
+      } else if (preorderRaw is Map<String, dynamic>) {
+        preorder = preorderRaw;
+      }
 
-    final dynamic preorderRaw = receipt['PREORDER'];
+      final status = preorder?['status'] ?? 'Pending';
 
-    Map<String, dynamic>? preorder;
-
-    if (preorderRaw is List &&
-        preorderRaw.isNotEmpty) {
-
-      preorder = preorderRaw.first;
-
-    } else if (preorderRaw
-        is Map<String, dynamic>) {
-
-      preorder = preorderRaw;
+      if (status == title) {
+        count++;
+      }
     }
 
-    final status =
-        preorder?['status'] ?? 'Pending';
+    final bool isSelected = selectedTab == title;
 
-    if (status == title) {
-      count++;
-    }
-  }
-
-  final bool isSelected =
-      selectedTab == title;
-
-  return Expanded(
-    child: GestureDetector(
-      onTap: () {
-        setState(() {
-          selectedTab = title;
-        });
-      },
-
-      child: AnimatedContainer(
-        duration:
-            const Duration(milliseconds: 250),
-
-        curve: Curves.easeInOut,
-
-        padding: const EdgeInsets.only(
-          top: 18,
-          bottom: 14,
-        ),
-
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: isSelected
-                  ? const Color(0xFF7A9E9F)
-                  : Colors.transparent,
-              width: 4,
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            selectedTab = title;
+          });
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.only(
+            top: 18,
+            bottom: 14,
+          ),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: isSelected ? const Color(0xFF7A9E9F) : Colors.black12,
+                width: isSelected ? 3 : 1, // Adjusted line weight
+              ),
             ),
           ),
-        ),
-
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-
-          children: [
-
-            Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.center,
-
-              children: [
-
-                Text(
-                  title,
-
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: isSelected
-                        ? FontWeight.bold
-                        : FontWeight.w500,
-
-                    color: isSelected
-                        ? Colors.black87
-                        : Colors.black45,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      color: isSelected ? Colors.black87 : Colors.black45,
+                    ),
                   ),
-                ),
-
-                if (count > 0) ...[
-
-                  const SizedBox(width: 8),
-
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-
-                    decoration: BoxDecoration(
-                      color:
-                          const Color(0xFF7A9E9F),
-
-                      borderRadius:
-                          BorderRadius.circular(
-                              10),
-                    ),
-
-                    child: Text(
-                      count.toString(),
-
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight:
-                            FontWeight.bold,
+                  if (count > 0) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7A9E9F),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        count.toString(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          const Color.fromRGBO(
+      backgroundColor: const Color.fromRGBO(
         249,
         246,
         241,
         1.0,
       ),
-
       body: SingleChildScrollView(
         child: Padding(
-          padding:
-              const EdgeInsets.all(24.0),
-
+          padding: const EdgeInsets.all(24.0),
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
                 'Customer Receipts',
-
                 style: TextStyle(
                   color: Colors.brown,
                   fontSize: 20,
-                  fontWeight:
-                      FontWeight.bold,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-
               const SizedBox(height: 20),
-
               TextField(
-                controller:
-                    _searchController,
-
-                onChanged: (value) =>
-                    setState(() =>
-                        query = value),
-
-                decoration:
-                    InputDecoration(
-                  prefixIcon:
-                      const Icon(Icons.search),
-
-                  hintText:
-                      "Search by Receipt ID...",
-
+                controller: _searchController,
+                onChanged: (value) => setState(() => query = value),
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
+                  hintText: "Search by Receipt ID...",
                   filled: true,
                   fillColor: Colors.white,
-
-                  border:
-                      OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(
-                            30),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(30),
                   ),
                 ),
               ),
-
               const SizedBox(height: 30),
-
-               // TABS
-Center(
-  child: Container(
-    width: double.infinity,
-
-    constraints: const BoxConstraints(
-      maxWidth: 1000,
-    ),
-
-    padding: const EdgeInsets.only(
-      top: 10,
-    ),
-
-    decoration: BoxDecoration(
-      color: Colors.white,
-
-      borderRadius:
-          BorderRadius.circular(26),
-
-      boxShadow: const [
-        BoxShadow(
-          color: Colors.black12,
-          blurRadius: 10,
-          offset: Offset(0, 4),
-        ),
-      ],
-    ),
-
-    child: Row(
-      children: [
-
-        _buildChromeTab('Pending'),
-
-        _buildChromeTab('Approved'),
-
-        _buildChromeTab('Denied'),
-      ],
-    ),
-  ),
-),
-              // TABLE
+              
+              // MERGED OF TABS AND TABLE CONTAINER
               Center(
                 child: Container(
                   width: double.infinity,
-
-                  constraints:
-                      const BoxConstraints(
+                  constraints: const BoxConstraints(
                     maxWidth: 1000,
                   ),
-
                   decoration: BoxDecoration(
                     color: Colors.white,
-
-                    borderRadius:
-                        BorderRadius.circular(
-                            24),
-
+                    borderRadius: BorderRadius.circular(24),
                     boxShadow: const [
                       BoxShadow(
                         color: Colors.black12,
-                        blurRadius: 6,
-                        offset: Offset(0, 3),
+                        blurRadius: 10,
+                        offset: Offset(0, 4),
                       ),
                     ],
                   ),
-
                   child: Column(
-                    mainAxisSize:
-                        MainAxisSize.min,
-
+                    mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Tabs Row
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0, left: 16, right: 16),
+                        child: Row(
+                          children: [
+                            _buildChromeTab('Pending'),
+                            _buildChromeTab('Approved'),
+                            _buildChromeTab('Denied'),
+                          ],
+                        ),
+                      ),
+                      
+                      // Table Header
                       Container(
-                        padding:
-                            const EdgeInsets
-                                .symmetric(
+                        padding: const EdgeInsets.symmetric(
                           vertical: 14,
                           horizontal: 16,
                         ),
-
-                        decoration:
-                            const BoxDecoration(
+                        decoration: const BoxDecoration(
                           border: Border(
                             bottom: BorderSide(
-                              color:
-                                  Colors.black26,
+                              color: Colors.black12,
                               width: 1.5,
                             ),
                           ),
                         ),
-
                         child: Row(
                           children: const [
-                            Expanded(
-                              child: HeaderText(
-                                  "ID"),
-                            ),
-
-                            Expanded(
-                              child: HeaderText(
-                                  "Date Submitted"),
-                            ),
-
-                            Expanded(
-                              child: HeaderText(
-                                  "Customer Email"),
-                            ),
-
-                            Expanded(
-                              child: HeaderText(
-                                  "Items"),
-                            ),
-
-                            Expanded(
-                              child: HeaderText(
-                                  "Status"),
-                            ),
-
-                            Expanded(
-                              child: HeaderText(
-                                  "Action"),
-                            ),
+                            Expanded(child: HeaderText("ID")),
+                            Expanded(child: HeaderText("Date Submitted")),
+                            Expanded(child: HeaderText("Customer Email")),
+                            Expanded(child: HeaderText("Items")),
+                            Expanded(child: HeaderText("Status")),
+                            Expanded(child: HeaderText("Action")),
                           ],
                         ),
                       ),
-
+                      
+                      // Table Body
                       if (_isLoading)
                         const Padding(
-                          padding:
-                              EdgeInsets.all(
-                                  40.0),
-
-                          child:
-                              CircularProgressIndicator(
-                            color:
-                                Colors.brown,
+                          padding: EdgeInsets.all(40.0),
+                          child: CircularProgressIndicator(
+                            color: Colors.brown,
                           ),
                         )
-
                       else
                         Column(
-                          children:
-                              _filteredRows(),
+                          children: _filteredRows(),
                         ),
                     ],
                   ),
@@ -738,85 +506,51 @@ Center(
 
   // FILTERED ROWS
   List<Widget> _filteredRows() {
-    final filtered =
-        _allReceipts.where((receipt) {
-      final dynamic preorderRaw =
-          receipt['PREORDER'];
-
+    final filtered = _allReceipts.where((receipt) {
+      final dynamic preorderRaw = receipt['PREORDER'];
       Map<String, dynamic>? preorder;
 
-      if (preorderRaw is List &&
-          preorderRaw.isNotEmpty) {
+      if (preorderRaw is List && preorderRaw.isNotEmpty) {
         preorder = preorderRaw.first;
-      } else if (preorderRaw
-          is Map<String, dynamic>) {
+      } else if (preorderRaw is Map<String, dynamic>) {
         preorder = preorderRaw;
       }
 
-      final status =
-          preorder?['status'] ??
-              'Pending';
+      final status = preorder?['status'] ?? 'Pending';
 
-      final matchesSearch = receipt[
-              'receipt_id']
-          .toString()
-          .contains(query);
+      final matchesSearch =
+          receipt['receipt_id'].toString().contains(query);
+      final matchesTab = status == selectedTab;
 
-      final matchesTab =
-          status == selectedTab;
-
-      return matchesSearch &&
-          matchesTab;
+      return matchesSearch && matchesTab;
     }).toList();
 
     return filtered.map((receipt) {
-      final dynamic preorderRaw =
-          receipt['PREORDER'];
-
+      final dynamic preorderRaw = receipt['PREORDER'];
       Map<String, dynamic>? preorder;
 
-      if (preorderRaw is List &&
-          preorderRaw.isNotEmpty) {
+      if (preorderRaw is List && preorderRaw.isNotEmpty) {
         preorder = preorderRaw.first;
-      } else if (preorderRaw
-          is Map<String, dynamic>) {
+      } else if (preorderRaw is Map<String, dynamic>) {
         preorder = preorderRaw;
       }
 
-      String email = preorder?['CUSTOMER']
-              ?['gmail'] ??
-          'N/A';
-
+      String email = preorder?['CUSTOMER']?['gmail'] ?? 'N/A';
       int totalQuantity = 0;
 
-      if (preorder != null &&
-          preorder['PREORDER_ITEMS'] !=
-              null) {
-        for (var i
-            in (preorder[
-                'PREORDER_ITEMS'] as List)) {
-          totalQuantity +=
-              (i['quantity'] ?? 0)
-                  as int;
+      if (preorder != null && preorder['PREORDER_ITEMS'] != null) {
+        for (var i in (preorder['PREORDER_ITEMS'] as List)) {
+          totalQuantity += (i['quantity'] ?? 0) as int;
         }
       }
 
       return tableRow(
-        receipt['receipt_id']
-            .toString(),
-
-        receipt['issued_at']
-            .toString()
-            .substring(0, 10),
-
+        receipt['receipt_id'].toString(),
+        receipt['issued_at'].toString().substring(0, 10),
         email,
         totalQuantity.toString(),
-
-        preorder?['status'] ??
-            'Pending',
-
-        onView: () =>
-            _showReceiptDetails(
+        preorder?['status'] ?? 'Pending',
+        onView: () => _showReceiptDetails(
           receipt,
           preorder!,
         ),
@@ -833,12 +567,10 @@ Center(
     required VoidCallback onView,
   }) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
+      padding: const EdgeInsets.symmetric(
         vertical: 14,
         horizontal: 16,
       ),
-
       decoration: const BoxDecoration(
         border: Border(
           bottom: BorderSide(
@@ -846,45 +578,69 @@ Center(
           ),
         ),
       ),
-
       child: Row(
         children: [
           Expanded(child: CellText(id)),
           Expanded(child: CellText(date)),
           Expanded(child: CellText(email)),
           Expanded(child: CellText(items)),
-          Expanded(child: CellText(status)),
+          
+          // STATUS PILL MATCHING DESIGN
+          Expanded(
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: status == 'Pending' 
+                      ? const Color(0xFFEBE3D5) // Match the brownish pill
+                      : status == 'Approved' 
+                          ? Colors.green.shade100 
+                          : Colors.red.shade100,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  status,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: status == 'Pending' 
+                        ? Colors.black87 
+                        : status == 'Approved' 
+                            ? Colors.green.shade800 
+                            : Colors.red.shade800,
+                  ),
+                ),
+              ),
+            ),
+          ),
 
+          // ACTION BUTTON
           Expanded(
             child: Center(
               child: InkWell(
                 onTap: onView,
-
+                borderRadius: BorderRadius.circular(20),
                 child: Container(
-                  padding:
-                      const EdgeInsets
-                          .symmetric(
-                    horizontal: 14,
-                    vertical: 6,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
                   ),
-
-                  decoration:
-                      BoxDecoration(
-                    color: const Color(
-                        0xFFE6DED6),
-
-                    borderRadius:
-                        BorderRadius
-                            .circular(20),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF6F4F0), // Light beige from image
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-
                   child: const Text(
                     "View",
-
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
                     ),
                   ),
                 ),
@@ -900,19 +656,17 @@ Center(
 class HeaderText extends StatelessWidget {
   final String text;
 
-  const HeaderText(this.text,
-      {super.key});
+  const HeaderText(this.text, {super.key});
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: Text(
         text,
-
         textAlign: TextAlign.center,
-
         style: const TextStyle(
           fontWeight: FontWeight.bold,
+          color: Colors.black87,
         ),
       ),
     );
@@ -922,19 +676,14 @@ class HeaderText extends StatelessWidget {
 class CellText extends StatelessWidget {
   final String text;
 
-  const CellText(this.text,
-      {super.key});
+  const CellText(this.text, {super.key});
 
   @override
   Widget build(BuildContext context) {
     return Text(
       text,
-
       textAlign: TextAlign.center,
-
-      overflow:
-          TextOverflow.ellipsis,
-
+      overflow: TextOverflow.ellipsis,
       maxLines: 1,
     );
   }
