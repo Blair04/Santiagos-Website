@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Initialize Supabase Client
 final _supabase = Supabase.instance.client;
 
 class ManageReceipt extends StatefulWidget {
@@ -34,7 +33,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
     super.dispose();
   }
 
-  // FETCH DATA
   Future<void> _fetchSupabaseData() async {
     try {
       final response = await _supabase.from('RECEIPT').select('''
@@ -44,11 +42,18 @@ class _ManageReceiptState extends State<ManageReceipt> {
         PREORDER (
           status,
           customer_id,
-          CUSTOMER (gmail),
+          total_price,
+          CUSTOMER (
+            gmail,
+            full_name
+          ),
           PREORDER_ITEMS (
             quantity,
             furniture_id,
-            FURNITURE (furniture_name)
+            FURNITURE (
+              furniture_name,
+              price
+            )
           )
         )
       ''');
@@ -68,42 +73,114 @@ class _ManageReceiptState extends State<ManageReceipt> {
     }
   }
 
-  // UPDATE STATUS
   Future<void> _updateStatus(
     dynamic preorderId,
     String newStatus,
   ) async {
     try {
-      await _supabase
+      if (mounted) {
+        setState(() => _isLoading = true);
+      }
+
+      Navigator.pop(context);
+
+      final updatedData = await _supabase
           .from('PREORDER')
-          .update({'status': newStatus}).eq('preorder_id', preorderId);
+          .update({'status': newStatus})
+          .eq('preorder_id', preorderId)
+          .select();
+
+      if (updatedData == null || updatedData.isEmpty) {
+        debugPrint("⚠️ WARNING: No rows were updated! Check your Supabase RLS Update policies for table 'PREORDER'.");
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Database update failed! Please check your Supabase RLS write permissions."),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          await _fetchSupabaseData(); // Rollback spinner
+        }
+        return;
+      }
 
       if (mounted) {
-        Navigator.pop(context);
-
         setState(() {
-          selectedTab = newStatus;
+          selectedTab = newStatus; 
         });
-
-        _fetchSupabaseData();
+        
+        await _fetchSupabaseData();
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Receipt marked as $newStatus"),
+            backgroundColor: newStatus.toLowerCase() == 'approved' ? Colors.green : Colors.redAccent,
           ),
         );
       }
     } catch (e) {
       debugPrint("Update Error: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
-  // RECEIPT DETAILS MODAL
   void _showReceiptDetails(
     Map<String, dynamic> receipt,
     Map<String, dynamic> preorder,
   ) {
-    final List itemsList = preorder['PREORDER_ITEMS'] ?? [];
+    final customerData = preorder['CUSTOMER'] ?? preorder['customer'];
+    final currentCustomerId = preorder['customer_id'] ?? preorder['customer_id'];
+    final customerEmail = customerData != null ? (customerData['gmail'] ?? 'N/A') : 'N/A';
+    final customerName = customerData != null ? (customerData['full_name'] ?? 'Unknown Customer') : 'Unknown Customer';
+
+    final targetPreorderId = receipt['preorder_id'];
+
+    final List<Map<String, dynamic>> flattenedCustomerItems = [];
+    double calculatedGrandTotal = 0.0;
+
+    for (var r in _allReceipts) {
+      final dynamic pRaw = r['PREORDER'] ?? r['preorder'];
+      Map<String, dynamic>? p;
+
+      if (pRaw is List && pRaw.isNotEmpty) {
+        p = pRaw.first;
+      } else if (pRaw is Map<String, dynamic>) {
+        p = pRaw;
+      }
+
+      if (p != null) {
+        final pCustomerId = p['customer_id'] ?? p['customer_id'];
+        
+        if (pCustomerId == currentCustomerId) {
+          final List itemsList = p['PREORDER_ITEMS'] ?? p['preorder_items'] ?? [];
+          
+          for (var item in itemsList) {
+            final furnitureData = item['FURNITURE'] ?? item['furniture'];
+            final String name = furnitureData != null 
+                ? (furnitureData['furniture_name'] ?? "Unknown Furniture")
+                : "Unknown Furniture";
+            
+            final int qty = (item['quantity'] ?? 0) as int;
+            
+            final double unitPrice = furnitureData != null 
+                ? (furnitureData['price'] ?? 0.0).toDouble() 
+                : 0.0;
+            
+            final double computedLineTotal = qty * unitPrice;
+            calculatedGrandTotal += computedLineTotal;
+
+            flattenedCustomerItems.add({
+              'furniture_name': name,
+              'quantity': qty,
+              'line_total': computedLineTotal,
+            });
+          }
+        }
+      }
+    }
 
     showDialog(
       context: context,
@@ -117,19 +194,35 @@ class _ManageReceiptState extends State<ManageReceipt> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Header Block
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    "Receipt ID: ${receipt['receipt_id']}",
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Colors.black54,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Customer Items (ID: $currentCustomerId)",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Colors.black54,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        "Name: $customerName",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: Colors.brown,
+                        ),
+                      ),
+                    ],
                   ),
                   Text(
-                    "Email: ${preorder['CUSTOMER']['gmail']}",
+                    "Email: $customerEmail",
                     style: const TextStyle(
                       color: Colors.black45,
                       fontSize: 14,
@@ -137,114 +230,132 @@ class _ManageReceiptState extends State<ManageReceipt> {
                   ),
                 ],
               ),
-              const SizedBox(height: 5),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Date: ${receipt['issued_at'].toString().substring(0, 10)}",
-                  style: const TextStyle(
-                    color: Colors.black45,
-                  ),
-                ),
-              ),
               const Divider(
-                height: 40,
+                height: 30,
                 thickness: 1.2,
               ),
+              
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: const [
-                  Text(
-                    "Items:",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                  Expanded(
+                    flex: 4,
+                    child: Text(
+                      "All Preordered Furniture:",
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
                     ),
                   ),
-                  Padding(
-                    padding: EdgeInsets.only(right: 20),
+                  Expanded(
+                    flex: 2,
                     child: Text(
-                      "Available:",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
+                      "Item Price",
+                      textAlign: TextAlign.end,
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 15),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: itemsList.length,
-                  itemBuilder: (context, index) {
-                    final item = itemsList[index];
-                    final furnitureName = item['FURNITURE'] != null
-                        ? item['FURNITURE']['furniture_name']
-                        : "Unknown Furniture";
+              const SizedBox(height: 12),
 
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 8.0,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.check_box_outlined,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                "$furnitureName (${item['quantity']})",
-                              ),
-                            ],
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: Colors.black12,
-                              ),
-                              borderRadius: BorderRadius.circular(15),
-                              color: Colors.white,
-                            ),
+              ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxHeight: 200,
+                ),
+                child: flattenedCustomerItems.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 20),
+                        child: Text(
+                          "No items found for this customer.",
+                          style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                        ),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: flattenedCustomerItems.length,
+                        itemBuilder: (context, index) {
+                          final item = flattenedCustomerItems[index];
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6.0),
                             child: Row(
-                              children: const [
-                                Text(
-                                  "Yes",
-                                  style: TextStyle(
-                                    fontSize: 12,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  flex: 4,
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.check_box_outlined,
+                                        size: 20,
+                                        color: Colors.black54,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          "${item['furniture_name']} (${item['quantity']})",
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontSize: 14, color: Colors.black87),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                Icon(
-                                  Icons.keyboard_arrow_down,
-                                  size: 16,
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    "₱${item['line_total'].toStringAsFixed(2)}",
+                                    textAlign: TextAlign.end,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
-                          )
-                        ],
+                          );
+                        },
                       ),
-                    );
-                  },
+              ),
+
+              const SizedBox(height: 10),
+              const Divider(thickness: 1.0, color: Colors.black12),
+              
+              // Total Price Summary Calculation
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "Total Price:",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Colors.black54,
+                      ),
+                    ),
+                    Text(
+                      "₱${calculatedGrandTotal.toStringAsFixed(2)}",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        color: Colors.brown,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 40),
+
+              const SizedBox(height: 24),
+              
+              // Action Decision Buttons Viewport Footer
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   ElevatedButton(
-                    onPressed: () => _updateStatus(
-                      receipt['preorder_id'],
-                      'Approved',
-                    ),
+                    onPressed: () => _updateStatus(targetPreorderId, 'Approved'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFE6DED6),
                       foregroundColor: Colors.brown,
@@ -253,16 +364,11 @@ class _ManageReceiptState extends State<ManageReceipt> {
                       ),
                       elevation: 0,
                     ),
-                    child: const Text(
-                      "Approve Receipt",
-                    ),
+                    child: const Text("Approve Receipt"),
                   ),
                   const SizedBox(width: 12),
                   ElevatedButton(
-                    onPressed: () => _updateStatus(
-                      receipt['preorder_id'],
-                      'Denied',
-                    ),
+                    onPressed: () => _updateStatus(targetPreorderId, 'Denied'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFB06A6A),
                       foregroundColor: Colors.white,
@@ -271,9 +377,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
                       ),
                       elevation: 0,
                     ),
-                    child: const Text(
-                      "Deny Receipt",
-                    ),
+                    child: const Text("Deny Receipt"),
                   ),
                   const SizedBox(width: 12),
                   TextButton(
@@ -294,12 +398,11 @@ class _ManageReceiptState extends State<ManageReceipt> {
     );
   }
 
-  // STYLE TAB
   Widget _buildChromeTab(String title) {
     int count = 0;
 
     for (var receipt in _allReceipts) {
-      final dynamic preorderRaw = receipt['PREORDER'];
+      final dynamic preorderRaw = receipt['PREORDER'] ?? receipt['preorder'];
       Map<String, dynamic>? preorder;
 
       if (preorderRaw is List && preorderRaw.isNotEmpty) {
@@ -308,14 +411,14 @@ class _ManageReceiptState extends State<ManageReceipt> {
         preorder = preorderRaw;
       }
 
-      final status = preorder?['status'] ?? 'Pending';
+      final status = preorder?['status'] ?? preorder?['status'] ?? 'Pending';
 
-      if (status == title) {
+      if (status.toString().toLowerCase() == title.toLowerCase()) {
         count++;
       }
     }
 
-    final bool isSelected = selectedTab == title;
+    final bool isSelected = selectedTab.toLowerCase() == title.toLowerCase();
 
     return Expanded(
       child: GestureDetector(
@@ -335,7 +438,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
             border: Border(
               bottom: BorderSide(
                 color: isSelected ? const Color(0xFF7A9E9F) : Colors.black12,
-                width: isSelected ? 3 : 1, // Adjusted line weight
+                width: isSelected ? 3 : 1,
               ),
             ),
           ),
@@ -386,12 +489,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color.fromRGBO(
-        249,
-        246,
-        241,
-        1.0,
-      ),
+      backgroundColor: const Color.fromRGBO(249, 246, 241, 1.0),
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
@@ -422,7 +520,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
               ),
               const SizedBox(height: 30),
               
-              // MERGED OF TABS AND TABLE CONTAINER
               Center(
                 child: Container(
                   width: double.infinity,
@@ -443,7 +540,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Tabs Row
                       Padding(
                         padding: const EdgeInsets.only(top: 8.0, left: 16, right: 16),
                         child: Row(
@@ -455,7 +551,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
                         ),
                       ),
                       
-                      // Table Header
                       Container(
                         padding: const EdgeInsets.symmetric(
                           vertical: 14,
@@ -474,14 +569,13 @@ class _ManageReceiptState extends State<ManageReceipt> {
                             Expanded(child: HeaderText("ID")),
                             Expanded(child: HeaderText("Date Submitted")),
                             Expanded(child: HeaderText("Customer Email")),
-                            Expanded(child: HeaderText("Items")),
+                            Expanded(child: HeaderText("Total Items")),
                             Expanded(child: HeaderText("Status")),
                             Expanded(child: HeaderText("Action")),
                           ],
                         ),
                       ),
                       
-                      // Table Body
                       if (_isLoading)
                         const Padding(
                           padding: EdgeInsets.all(40.0),
@@ -504,10 +598,9 @@ class _ManageReceiptState extends State<ManageReceipt> {
     );
   }
 
-  // FILTERED ROWS
   List<Widget> _filteredRows() {
     final filtered = _allReceipts.where((receipt) {
-      final dynamic preorderRaw = receipt['PREORDER'];
+      final dynamic preorderRaw = receipt['PREORDER'] ?? receipt['preorder'];
       Map<String, dynamic>? preorder;
 
       if (preorderRaw is List && preorderRaw.isNotEmpty) {
@@ -516,17 +609,18 @@ class _ManageReceiptState extends State<ManageReceipt> {
         preorder = preorderRaw;
       }
 
-      final status = preorder?['status'] ?? 'Pending';
+      final status = preorder?['status'] ?? preorder?['status'] ?? 'Pending';
 
       final matchesSearch =
           receipt['receipt_id'].toString().contains(query);
-      final matchesTab = status == selectedTab;
+          
+      final matchesTab = status.toString().toLowerCase() == selectedTab.toLowerCase();
 
       return matchesSearch && matchesTab;
     }).toList();
 
     return filtered.map((receipt) {
-      final dynamic preorderRaw = receipt['PREORDER'];
+      final dynamic preorderRaw = receipt['PREORDER'] ?? receipt['preorder'];
       Map<String, dynamic>? preorder;
 
       if (preorderRaw is List && preorderRaw.isNotEmpty) {
@@ -535,11 +629,13 @@ class _ManageReceiptState extends State<ManageReceipt> {
         preorder = preorderRaw;
       }
 
-      String email = preorder?['CUSTOMER']?['gmail'] ?? 'N/A';
+      final customerData = preorder != null ? (preorder['CUSTOMER'] ?? preorder['customer']) : null;
+      String email = customerData != null ? (customerData['gmail'] ?? 'N/A') : 'N/A';
       int totalQuantity = 0;
 
-      if (preorder != null && preorder['PREORDER_ITEMS'] != null) {
-        for (var i in (preorder['PREORDER_ITEMS'] as List)) {
+      if (preorder != null) {
+        final List itemsList = preorder['PREORDER_ITEMS'] ?? preorder['preorder_items'] ?? [];
+        for (var i in itemsList) {
           totalQuantity += (i['quantity'] ?? 0) as int;
         }
       }
@@ -549,7 +645,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
         receipt['issued_at'].toString().substring(0, 10),
         email,
         totalQuantity.toString(),
-        preorder?['status'] ?? 'Pending',
+        preorder != null ? (preorder['status'] ?? preorder['status'] ?? 'Pending') : 'Pending',
         onView: () => _showReceiptDetails(
           receipt,
           preorder!,
@@ -585,15 +681,14 @@ class _ManageReceiptState extends State<ManageReceipt> {
           Expanded(child: CellText(email)),
           Expanded(child: CellText(items)),
           
-          // STATUS PILL MATCHING DESIGN
           Expanded(
             child: Center(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
-                  color: status == 'Pending' 
-                      ? const Color(0xFFEBE3D5) // Match the brownish pill
-                      : status == 'Approved' 
+                  color: status.toLowerCase() == 'pending' 
+                      ? const Color(0xFFEBE3D5)
+                      : status.toLowerCase() == 'approved' 
                           ? Colors.green.shade100 
                           : Colors.red.shade100,
                   borderRadius: BorderRadius.circular(20),
@@ -602,9 +697,9 @@ class _ManageReceiptState extends State<ManageReceipt> {
                   status,
                   style: TextStyle(
                     fontSize: 12,
-                    color: status == 'Pending' 
+                    color: status.toLowerCase() == 'pending' 
                         ? Colors.black87 
-                        : status == 'Approved' 
+                        : status.toLowerCase() == 'approved' 
                             ? Colors.green.shade800 
                             : Colors.red.shade800,
                   ),
@@ -613,7 +708,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
             ),
           ),
 
-          // ACTION BUTTON
           Expanded(
             child: Center(
               child: InkWell(
@@ -625,7 +719,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF6F4F0), // Light beige from image
+                    color: const Color(0xFFF6F4F0),
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
@@ -655,7 +749,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
 
 class HeaderText extends StatelessWidget {
   final String text;
-
   const HeaderText(this.text, {super.key});
 
   @override
@@ -675,7 +768,6 @@ class HeaderText extends StatelessWidget {
 
 class CellText extends StatelessWidget {
   final String text;
-
   const CellText(this.text, {super.key});
 
   @override
