@@ -32,19 +32,22 @@ class _PreorderState extends State<Preorder> {
     super.dispose();
   }
 
-  /// Fetches furniture names and counts how many times each has been preordered
+  /// Fetches furniture names from PREORDER_ITEMS and counts frequencies
   Future<void> _fetchPopularItems() async {
     try {
-      // We join PREORDER with FURNITURE to get the names
+      // Query the junction table which bridges PREORDER and FURNITURE
       final response = await _supabase
-          .from('PREORDER')
-          .select('FURNITURE(furniture_name)');
+          .from('PREORDER_ITEMS')
+          .select('quantity, FURNITURE(furniture_name)');
 
-      // Logic to count frequency of each furniture name
+      // Logic to count frequency of each furniture name based on quantity
       Map<String, int> counts = {};
       for (var item in response) {
-        String name = item['FURNITURE']['furniture_name'] ?? 'Unknown';
-        counts[name] = (counts[name] ?? 0) + 1;
+        final furnitureData = item['FURNITURE'] as Map<String, dynamic>?;
+        String name = furnitureData?['furniture_name'] ?? 'Unknown';
+        
+        int qty = item['quantity'] ?? 1;
+        counts[name] = (counts[name] ?? 0) + qty;
       }
 
       // Sort by frequency (descending)
