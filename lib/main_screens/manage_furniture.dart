@@ -17,7 +17,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
   List<Map<String, dynamic>> _products = [];
   bool _isLoading = true;
 
-  // ✅ SEARCH
+
   final TextEditingController _searchController = TextEditingController();
   List<String> searchHistory = [];
   String query = "";
@@ -189,7 +189,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
 
             // ✅ SEARCH LABEL
             const Text(
-              "Search",
+              "",
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.black54,
