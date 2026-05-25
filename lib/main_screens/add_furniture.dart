@@ -9,7 +9,6 @@ import 'package:desktop_drop/desktop_drop.dart';
 final _supabase = Supabase.instance.client;
 
 class AddFurniture extends StatefulWidget {
-  // 1. Added an optional product Map argument to pass existing item data when editing
   final Map<String, dynamic>? editProduct;
 
   const AddFurniture({super.key, this.editProduct});
@@ -27,30 +26,32 @@ class _AddFurnitureState extends State<AddFurniture> {
   final _descController = TextEditingController();
   final _colorController = TextEditingController();
 
+  // ✅ PRICE ERROR STATE — drives red outline and error message
+  String? _priceError;
+
   // Media Data
   Uint8List? _imageBytes;
   Uint8List? _modelBytes;
   String? _imageName;
   String? _modelName;
-  
+
   // Track if we are using existing database URLs during edit mode
   String? _existingImageUrl;
   String? _existingModelUrl;
 
   bool _isUploading = false;
-  
+
   // SEPARATE HIGHLIGHT STATES
   bool _isDraggingImage = false;
   bool _isDraggingModel = false;
-  
-  bool _linkToExisting = false; 
+
+  bool _linkToExisting = false;
 
   List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _existingFurniture = [];
   int? _selectedCategoryId;
   int? _selectedFurnitureId;
 
-  // Helper getter to determine if the form is in edit mode
   bool get _isEditing => widget.editProduct != null;
 
   @override
@@ -60,7 +61,6 @@ class _AddFurnitureState extends State<AddFurniture> {
     _checkEditMode();
   }
 
-  // 2. Pre-populate form values if an editProduct map is supplied
   void _checkEditMode() {
     if (_isEditing) {
       final p = widget.editProduct!;
@@ -85,15 +85,19 @@ class _AddFurnitureState extends State<AddFurniture> {
 
   Future<void> _loadInitialData() async {
     try {
-      final catRes = await _supabase.from('CATEGORY').select('category_id, category_name').order('category_name');
-      final furnRes = await _supabase.from('FURNITURE').select('furniture_id, furniture_name').order('furniture_name');
+      final catRes = await _supabase
+          .from('CATEGORY')
+          .select('category_id, category_name')
+          .order('category_name');
+      final furnRes = await _supabase
+          .from('FURNITURE')
+          .select('furniture_id, furniture_name')
+          .order('furniture_name');
 
       if (mounted) {
         setState(() {
           _categories = List<Map<String, dynamic>>.from(catRes);
           _existingFurniture = List<Map<String, dynamic>>.from(furnRes);
-          
-          // Only auto-select first category if we aren't editing/already have a selection
           if (_categories.isNotEmpty && _selectedCategoryId == null) {
             _selectedCategoryId = _categories.first['category_id'];
           }
@@ -107,59 +111,96 @@ class _AddFurnitureState extends State<AddFurniture> {
   // --- PICKER LOGIC ---
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    final pickedFile =
+        await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (pickedFile != null) {
       final bytes = await pickedFile.readAsBytes();
-      setState(() { _imageBytes = bytes; _imageName = pickedFile.name; });
+      setState(() {
+        _imageBytes = bytes;
+        _imageName = pickedFile.name;
+      });
     }
   }
 
   Future<void> _pickModel() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['glb', 'usdz', 'zip'], withData: true);
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['glb', 'usdz', 'zip'],
+        withData: true);
     if (result != null) {
-      setState(() { _modelBytes = result.files.single.bytes; _modelName = result.files.single.name; });
+      setState(() {
+        _modelBytes = result.files.single.bytes;
+        _modelName = result.files.single.name;
+      });
     }
+  }
+
+  // ✅ VALIDATE PRICE — returns error string or null if valid
+  String? _validatePriceValue(String value) {
+    if (value.trim().isEmpty) return 'Price is required.';
+    final parsed = double.tryParse(value.trim());
+    if (parsed == null) return 'Enter a valid number.';
+    if (parsed < 0) return 'Price cannot be negative.';
+    if (parsed == 0) return 'Price must be greater than zero.';
+    return null;
   }
 
   // --- SAVE / UPDATE LOGIC ---
   Future<void> _saveProduct() async {
-    // If not editing, image is mandatory. If editing, we can keep the old one if no new one is uploaded.
-    if (!_formKey.currentState!.validate() || (!_isEditing && _imageBytes == null)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please check your inputs and image.')));
+    // ✅ VALIDATE PRICE FIRST — set red error state if invalid
+    final priceValidation = _validatePriceValue(_priceController.text);
+    if (priceValidation != null) {
+      setState(() => _priceError = priceValidation);
+      return; // ⛔ STOP submission
+    }
+
+    if (!_formKey.currentState!.validate() ||
+        (!_isEditing && _imageBytes == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please check your inputs and image.')));
       return;
     }
 
     if (!_isEditing && _linkToExisting && _selectedFurnitureId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select an existing furniture item.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Please select an existing furniture item.')));
       return;
     }
 
     setState(() => _isUploading = true);
-    showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.brown)));
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) =>
+            const Center(child: CircularProgressIndicator(color: Colors.brown)));
 
     try {
-      // Handle Image assignment (upload new or retain existing)
       String imageUrl = _existingImageUrl ?? '';
       if (_imageBytes != null) {
-        final String imageFileName = '${DateTime.now().millisecondsSinceEpoch}_${_imageName ?? 'img.png'}';
-        await _supabase.storage.from('images').uploadBinary(imageFileName, _imageBytes!);
-        imageUrl = _supabase.storage.from('images').getPublicUrl(imageFileName);
+        final String imageFileName =
+            '${DateTime.now().millisecondsSinceEpoch}_${_imageName ?? 'img.png'}';
+        await _supabase.storage
+            .from('images')
+            .uploadBinary(imageFileName, _imageBytes!);
+        imageUrl =
+            _supabase.storage.from('images').getPublicUrl(imageFileName);
       }
 
-      // Handle 3D Model assignment (upload new or retain existing)
       String arUrl = _existingModelUrl ?? '';
       if (_modelBytes != null) {
-        final String modelFileName = '${DateTime.now().millisecondsSinceEpoch}.${_modelName?.split('.').last ?? 'glb'}';
-        await _supabase.storage.from('3d_models').uploadBinary(modelFileName, _modelBytes!);
-        arUrl = _supabase.storage.from('3d_models').getPublicUrl(modelFileName);
+        final String modelFileName =
+            '${DateTime.now().millisecondsSinceEpoch}.${_modelName?.split('.').last ?? 'glb'}';
+        await _supabase.storage
+            .from('3d_models')
+            .uploadBinary(modelFileName, _modelBytes!);
+        arUrl =
+            _supabase.storage.from('3d_models').getPublicUrl(modelFileName);
       }
 
       if (_isEditing) {
-        // --- EDIT TRANSACTION LOGIC ---
         final furnitureId = widget.editProduct!['furniture_id'];
         final variantId = widget.editProduct!['variant_id'];
 
-        // Update FURNITURE entry
         await _supabase.from('FURNITURE').update({
           'furniture_name': _nameController.text.trim(),
           'description': _descController.text.trim(),
@@ -167,18 +208,15 @@ class _AddFurnitureState extends State<AddFurniture> {
           'category_id': _selectedCategoryId,
         }).eq('furniture_id', furnitureId);
 
-        // Update VARIANT entry
         await _supabase.from('VARIANT').update({
           'color': _colorController.text.trim(),
           'image_url': imageUrl,
           'ar_model_url': arUrl,
         }).eq('variant_id', variantId);
-
       } else {
-        // --- ORIGINAL ADD LOGIC ---
         int targetFurnitureId;
 
-        if (!_linkToExisting) { 
+        if (!_linkToExisting) {
           final res = await _supabase.from('FURNITURE').insert({
             'furniture_name': _nameController.text.trim(),
             'description': _descController.text.trim(),
@@ -186,7 +224,7 @@ class _AddFurnitureState extends State<AddFurniture> {
             'category_id': _selectedCategoryId,
           }).select('furniture_id').single();
           targetFurnitureId = res['furniture_id'];
-        } else { 
+        } else {
           targetFurnitureId = _selectedFurnitureId!;
         }
 
@@ -195,20 +233,22 @@ class _AddFurnitureState extends State<AddFurniture> {
           'color': _colorController.text.trim(),
           'image_url': imageUrl,
           'ar_model_url': arUrl,
-          });
+        });
       }
 
       if (mounted) {
-        Navigator.pop(context); 
-        Navigator.pop(context); 
+        Navigator.pop(context);
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(_isEditing ? 'Product successfully updated!' : 'Product successfully saved!'), 
-          backgroundColor: Colors.green
-        ));
+            content: Text(_isEditing
+                ? 'Product successfully updated!'
+                : 'Product successfully saved!'),
+            backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
@@ -227,61 +267,87 @@ class _AddFurnitureState extends State<AddFurniture> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
+              Center(
+                  child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(2)))),
               const SizedBox(height: 16),
-              
-              // Dynamic title text based on mode
-              Text(_isEditing ? 'Edit Product' : 'Add New Product', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.brown)),
+
+              Text(
+                  _isEditing ? 'Edit Product' : 'Add New Product',
+                  style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.brown)),
               const SizedBox(height: 20),
-              
+
               Row(
                 children: [
                   _buildFilePicker(
-                    label: 'Image', 
-                    icon: Icons.image, 
-                    bytes: _imageBytes, 
-                    networkUrl: _existingImageUrl, // Send network URL fallback if editing
-                    onTap: _pickImage, 
-                    isImage: true, 
-                    isHighlighted: _isDraggingImage,
-                    onDragEntered: () => setState(() => _isDraggingImage = true),
-                    onDragExited: () => setState(() => _isDraggingImage = false),
-                    onFileDropped: (b, n) => setState(() { _imageBytes = b; _imageName = n; _isDraggingImage = false; })
-                  ),
+                      label: 'Image',
+                      icon: Icons.image,
+                      bytes: _imageBytes,
+                      networkUrl: _existingImageUrl,
+                      onTap: _pickImage,
+                      isImage: true,
+                      isHighlighted: _isDraggingImage,
+                      onDragEntered: () =>
+                          setState(() => _isDraggingImage = true),
+                      onDragExited: () =>
+                          setState(() => _isDraggingImage = false),
+                      onFileDropped: (b, n) => setState(() {
+                            _imageBytes = b;
+                            _imageName = n;
+                            _isDraggingImage = false;
+                          })),
                   const SizedBox(width: 12),
                   _buildFilePicker(
-                    label: '3D Model', 
-                    icon: Icons.view_in_ar, 
-                    bytes: _modelBytes, 
-                    networkUrl: _existingModelUrl, // Send network URL fallback if editing
-                    onTap: _pickModel, 
-                    isImage: false, 
-                    isHighlighted: _isDraggingModel,
-                    onDragEntered: () => setState(() => _isDraggingModel = true),
-                    onDragExited: () => setState(() => _isDraggingModel = false),
-                    onFileDropped: (b, n) => setState(() { _modelBytes = b; _modelName = n; _isDraggingModel = false; })
-                  ),
+                      label: '3D Model',
+                      icon: Icons.view_in_ar,
+                      bytes: _modelBytes,
+                      networkUrl: _existingModelUrl,
+                      onTap: _pickModel,
+                      isImage: false,
+                      isHighlighted: _isDraggingModel,
+                      onDragEntered: () =>
+                          setState(() => _isDraggingModel = true),
+                      onDragExited: () =>
+                          setState(() => _isDraggingModel = false),
+                      onFileDropped: (b, n) => setState(() {
+                            _modelBytes = b;
+                            _modelName = n;
+                            _isDraggingModel = false;
+                          })),
                 ],
               ),
-              
+
               const SizedBox(height: 24),
 
-              // 3. Conditionally hide the "Add to existing furniture" container completely if we are in Edit Mode
               if (!_isEditing) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
                     color: Colors.brown.withOpacity(0.05),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.brown.withOpacity(0.1)),
+                    border:
+                        Border.all(color: Colors.brown.withOpacity(0.1)),
                   ),
                   child: CheckboxListTile(
-                    title: const Text('Add to existing furniture?', style: TextStyle(color: Colors.brown, fontWeight: FontWeight.w600)),
-                    subtitle: const Text('Check this if you are only adding a new color/variant.', style: TextStyle(fontSize: 11)),
+                    title: const Text('Add to existing furniture?',
+                        style: TextStyle(
+                            color: Colors.brown,
+                            fontWeight: FontWeight.w600)),
+                    subtitle: const Text(
+                        'Check this if you are only adding a new color/variant.',
+                        style: TextStyle(fontSize: 11)),
                     value: _linkToExisting,
                     activeColor: Colors.brown,
                     contentPadding: EdgeInsets.zero,
-                    onChanged: (val) => setState(() => _linkToExisting = val ?? false),
+                    onChanged: (val) =>
+                        setState(() => _linkToExisting = val ?? false),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -292,24 +358,81 @@ class _AddFurnitureState extends State<AddFurniture> {
                   initialValue: _selectedFurnitureId,
                   isExpanded: true,
                   decoration: _inputDeco('Select Existing Furniture'),
-                  items: _existingFurniture.map((f) => DropdownMenuItem<int>(value: f['furniture_id'], child: Text(f['furniture_name']))).toList(),
+                  items: _existingFurniture
+                      .map((f) => DropdownMenuItem<int>(
+                          value: f['furniture_id'],
+                          child: Text(f['furniture_name'])))
+                      .toList(),
                   onChanged: (v) => setState(() => _selectedFurnitureId = v),
                 ),
               ] else ...[
-                TextFormField(controller: _nameController, decoration: _inputDeco('Product Name'), validator: (v) => v!.isEmpty ? 'Required' : null),
+                TextFormField(
+                  controller: _nameController,
+                  decoration: _inputDeco('Product Name'),
+                  validator: (v) => v!.isEmpty ? 'Required' : null,
+                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
-                      child: TextFormField(controller: _priceController, keyboardType: TextInputType.number, decoration: _inputDeco('Price').copyWith(prefixText: '₱ '), validator: (v) => double.tryParse(v!) == null ? 'Invalid' : null),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // ✅ PRICE FIELD WITH RED OUTLINE ON ERROR
+                          TextFormField(
+                            controller: _priceController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            decoration: _inputDeco('Price').copyWith(
+                              prefixText: '₱ ',
+                              // ✅ Show red error text below field
+                              errorText: _priceError,
+                              // ✅ Red outline when error is set
+                              enabledBorder: _priceError != null
+                                  ? OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: const BorderSide(
+                                          color: Colors.red, width: 1.5),
+                                    )
+                                  : OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                              focusedBorder: _priceError != null
+                                  ? OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: const BorderSide(
+                                          color: Colors.red, width: 2),
+                                    )
+                                  : OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: const BorderSide(
+                                          color: Colors.brown, width: 2),
+                                    ),
+                            ),
+                            // ✅ REAL-TIME VALIDATION as user types
+                            onChanged: (value) {
+                              setState(() {
+                                _priceError = _validatePriceValue(value);
+                              });
+                            },
+                            // ✅ ALSO validate on form submit
+                            validator: (v) => _validatePriceValue(v ?? ''),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: DropdownButtonFormField<int>(
-                        value: _selectedCategoryId, // changed initialValue to value to sync properly during setState refreshes
+                        value: _selectedCategoryId,
                         decoration: _inputDeco('Category'),
-                        items: _categories.map((c) => DropdownMenuItem<int>(value: c['category_id'], child: Text(c['category_name']))).toList(),
-                        onChanged: (v) => setState(() => _selectedCategoryId = v!),
+                        items: _categories
+                            .map((c) => DropdownMenuItem<int>(
+                                value: c['category_id'],
+                                child: Text(c['category_name'])))
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _selectedCategoryId = v!),
                       ),
                     ),
                   ],
@@ -317,28 +440,41 @@ class _AddFurnitureState extends State<AddFurniture> {
               ],
 
               const SizedBox(height: 12),
-              TextFormField(controller: _colorController, decoration: _inputDeco('Variant/Color (e.g. Natural Oak)'), validator: (v) => v!.isEmpty ? 'Required' : null),
+              TextFormField(
+                  controller: _colorController,
+                  decoration:
+                      _inputDeco('Variant/Color (e.g. Natural Oak)'),
+                  validator: (v) => v!.isEmpty ? 'Required' : null),
               const SizedBox(height: 12),
-              if (_isEditing || !_linkToExisting) TextFormField(controller: _descController, maxLines: 2, decoration: _inputDeco('Description')),
-              
+              if (_isEditing || !_linkToExisting)
+                TextFormField(
+                    controller: _descController,
+                    maxLines: 2,
+                    decoration: _inputDeco('Description')),
+
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _isUploading ? null : _saveProduct,
+                  // ✅ ALSO BLOCK if price has an active error
+                  onPressed: (_isUploading || _priceError != null)
+                      ? null
+                      : _saveProduct,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.brown, 
-                    foregroundColor: Colors.white, 
-                    padding: const EdgeInsets.symmetric(vertical: 16), 
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-                  ),
+                      backgroundColor: Colors.brown,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10))),
                   child: Text(
-                    // Dynamic action text based on whether adding variants or saving edits
-                    _isEditing 
-                        ? 'Update Product' 
-                        : (_linkToExisting ? 'Confirm & Add Variant' : 'Add New Product'), 
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+                    _isEditing
+                        ? 'Update Product'
+                        : (_linkToExisting
+                            ? 'Confirm & Add Variant'
+                            : 'Add New Product'),
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -349,24 +485,25 @@ class _AddFurnitureState extends State<AddFurniture> {
     );
   }
 
- // --- REUSED HELPERS ---
-Widget _buildFilePicker({
-  required String label, 
-  required IconData icon, 
-  Uint8List? bytes, 
-  String? networkUrl, 
-  required VoidCallback onTap, 
-  required bool isImage, 
-  required bool isHighlighted,
-  required VoidCallback onDragEntered,
-  required VoidCallback onDragExited,
-  required Function(Uint8List, String) onFileDropped
-}) {
-  
-  final hasAsset = bytes != null || 
-      (networkUrl != null && networkUrl.isNotEmpty && networkUrl.startsWith('http'));
+  // --- REUSED HELPERS ---
+  Widget _buildFilePicker({
+    required String label,
+    required IconData icon,
+    Uint8List? bytes,
+    String? networkUrl,
+    required VoidCallback onTap,
+    required bool isImage,
+    required bool isHighlighted,
+    required VoidCallback onDragEntered,
+    required VoidCallback onDragExited,
+    required Function(Uint8List, String) onFileDropped,
+  }) {
+    final hasAsset = bytes != null ||
+        (networkUrl != null &&
+            networkUrl.isNotEmpty &&
+            networkUrl.startsWith('http'));
 
-  return Expanded(
+    return Expanded(
       child: DropTarget(
         onDragDone: (detail) async {
           if (detail.files.isNotEmpty) {
@@ -382,35 +519,46 @@ Widget _buildFilePicker({
             duration: const Duration(milliseconds: 150),
             height: 100,
             decoration: BoxDecoration(
-              color: isHighlighted ? Colors.brown.withOpacity(0.2) : Colors.brown.withOpacity(0.05), 
-              borderRadius: BorderRadius.circular(10), 
-              border: Border.all(
-                color: isHighlighted ? Colors.brown : (hasAsset ? Colors.green : Colors.brown.withOpacity(0.15)),
-                width: isHighlighted ? 2.5 : 1.0,
-              )
-            ),
+                color: isHighlighted
+                    ? Colors.brown.withOpacity(0.2)
+                    : Colors.brown.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isHighlighted
+                      ? Colors.brown
+                      : (hasAsset
+                          ? Colors.green
+                          : Colors.brown.withOpacity(0.15)),
+                  width: isHighlighted ? 2.5 : 1.0,
+                )),
             child: hasAsset && !isHighlighted
-              ? (isImage 
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(10), 
-                      child: bytes != null 
-                          ? Image.memory(bytes, fit: BoxFit.cover) 
-                          : Image.network(networkUrl!, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.broken_image, color: Colors.grey))
-                    ) 
-                  : const Icon(Icons.check_circle, color: Colors.green))
-              : Column(
-                  mainAxisAlignment: MainAxisAlignment.center, 
-                  children: [
-                    Icon(
-                      isHighlighted ? Icons.file_upload : icon, 
-                      color: isHighlighted ? Colors.brown : Colors.brown.withOpacity(0.6)
-                    ), 
-                    Text(
-                      isHighlighted ? 'Drop File' : label, 
-                      style: TextStyle(fontSize: 12, fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)
-                    )
-                  ]
-                ),
+                ? (isImage
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: bytes != null
+                            ? Image.memory(bytes, fit: BoxFit.cover)
+                            : Image.network(networkUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (c, e, s) => const Icon(
+                                    Icons.broken_image,
+                                    color: Colors.grey)))
+                    : const Icon(Icons.check_circle, color: Colors.green))
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                          isHighlighted ? Icons.file_upload : icon,
+                          color: isHighlighted
+                              ? Colors.brown
+                              : Colors.brown.withOpacity(0.6)),
+                      Text(isHighlighted ? 'Drop File' : label,
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: isHighlighted
+                                  ? FontWeight.bold
+                                  : FontWeight.normal))
+                    ],
+                  ),
           ),
         ),
       ),
@@ -418,10 +566,14 @@ Widget _buildFilePicker({
   }
 
   InputDecoration _inputDeco(String label) => InputDecoration(
-    labelText: label, 
-    labelStyle: const TextStyle(color: Colors.brown, fontSize: 13),
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), 
-    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.brown, width: 2)),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
-  );
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.brown, fontSize: 13),
+        border:
+            OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.brown, width: 2)),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      );
 }
