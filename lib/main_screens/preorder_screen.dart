@@ -35,12 +35,10 @@ class _PreorderState extends State<Preorder> {
   /// Fetches furniture names from PREORDER_ITEMS and counts frequencies
   Future<void> _fetchPopularItems() async {
     try {
-      // Query the junction table which bridges PREORDER and FURNITURE
       final response = await _supabase
           .from('PREORDER_ITEMS')
           .select('quantity, FURNITURE(furniture_name)');
 
-      // Logic to count frequency of each furniture name based on quantity
       Map<String, int> counts = {};
       for (var item in response) {
         final furnitureData = item['FURNITURE'] as Map<String, dynamic>?;
@@ -50,7 +48,6 @@ class _PreorderState extends State<Preorder> {
         counts[name] = (counts[name] ?? 0) + qty;
       }
 
-      // Sort by frequency (descending)
       var sortedList = counts.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -74,11 +71,21 @@ class _PreorderState extends State<Preorder> {
     }
   }
 
+  // Extracted helper to run filter logic so we can check row length easily
+  List<Map<String, dynamic>> _getFilteredList() {
+    return _popularItems.where((item) {
+      return item['name'].toString().toLowerCase().contains(query.toLowerCase());
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Obtain filtered array lengths for the adaptive conditional block below
+    final filteredItems = _getFilteredList();
+
     return Scaffold(
       backgroundColor: const Color.fromRGBO(249, 246, 241, 1.0),
-      body: SingleChildScrollView( // Allows the whole page to scroll as the table grows
+      body: SingleChildScrollView( 
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20),
           child: Column(
@@ -128,7 +135,7 @@ class _PreorderState extends State<Preorder> {
                     ],
                   ),
                   child: Column(
-                    mainAxisSize: MainAxisSize.min, // Shrink-wraps height
+                    mainAxisSize: MainAxisSize.min, 
                     children: [
                       // HEADER
                       Container(
@@ -146,7 +153,7 @@ class _PreorderState extends State<Preorder> {
                         ),
                       ),
 
-                      // DATA ROWS
+                      // DATA ROWS WITH SEAMLESS EMPTY CONDITIONS
                       if (_isLoading)
                         const Padding(
                           padding: EdgeInsets.all(40.0),
@@ -157,9 +164,19 @@ class _PreorderState extends State<Preorder> {
                           padding: EdgeInsets.all(40.0),
                           child: Text("No preorders recorded yet."),
                         )
+                      else if (filteredItems.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.all(40.0),
+                          child: Text(
+                            'There are no products matching "$query"',
+                            style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                          ),
+                        )
                       else
                         Column(
-                          children: _filteredRows(),
+                          children: filteredItems
+                              .map((item) => _buildRow(item['name'], item['count'].toString()))
+                              .toList(),
                         ),
                     ],
                   ),
@@ -170,16 +187,6 @@ class _PreorderState extends State<Preorder> {
         ),
       ),
     );
-  }
-
-  List<Widget> _filteredRows() {
-    final filtered = _popularItems.where((item) {
-      return item['name'].toString().toLowerCase().contains(query.toLowerCase());
-    }).toList();
-
-    return filtered
-        .map((item) => _buildRow(item['name'], item['count'].toString()))
-        .toList();
   }
 
   Widget _buildRow(String name, String freq) {
