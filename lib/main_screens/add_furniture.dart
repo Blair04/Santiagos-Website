@@ -410,12 +410,8 @@ Widget _buildFilePicker({
                       style: TextStyle(fontSize: 12, fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)
                     )
                   ]
-                ),
-          ),
-        ),
-      ),
-    );
-  }
+              ),
+          ),),),);}
 
   InputDecoration _inputDeco(String label) => InputDecoration(
     labelText: label, 

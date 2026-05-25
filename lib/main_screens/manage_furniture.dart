@@ -17,7 +17,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
   List<Map<String, dynamic>> _products = [];
   bool _isLoading = true;
 
-  // ✅ SEARCH
+  // search
   final TextEditingController _searchController =
       TextEditingController();
 
@@ -39,7 +39,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
     super.dispose();
   }
 
-  // ✅ SEARCH HISTORY
+  // search history
   void addToHistory(String value) {
     if (value.isNotEmpty && !searchHistory.contains(value)) {
       setState(() {
@@ -201,18 +201,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
 
             const SizedBox(height: 20),
 
-            // ✅ SEARCH LABEL
-            const Text(
-              "Search",
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.black54,
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // ✅ SEARCH BAR
+            // search bar
             SizedBox(
               width: double.infinity,
 
@@ -250,7 +239,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
 
             const SizedBox(height: 10),
 
-            // ✅ SEARCH HISTORY
+            // search history
             if (searchHistory.isNotEmpty)
               Wrap(
                 spacing: 8,

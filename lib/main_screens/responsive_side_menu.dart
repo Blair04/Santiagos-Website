@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/main_screens/manage_receipt_screen.dart';
 import 'package:flutter_application_1/main_screens/preorder_screen.dart';
 import 'package:flutter_application_1/main_screens/manage_furniture.dart';
-// Import your login screen file here
 import 'package:flutter_application_1/main_screens/login_screen.dart'; 
 
 class MainResponsivePage extends StatefulWidget {
