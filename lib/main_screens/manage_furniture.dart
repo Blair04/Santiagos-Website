@@ -17,7 +17,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
   List<Map<String, dynamic>> _products = [];
   bool _isLoading = true;
 
-
+  // search
   final TextEditingController _searchController = TextEditingController();
   List<String> searchHistory = [];
   String query = "";
@@ -37,7 +37,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
     super.dispose();
   }
 
-  // ✅ SEARCH HISTORY
+  // search history
   void addToHistory(String value) {
     if (value.isNotEmpty && !searchHistory.contains(value)) {
       setState(() {
@@ -128,7 +128,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
       'variant_id': currentVariant['variant_id'],
       'color': currentVariant['color'],
       'image_url': currentVariant['image_url'],
-      'ar_model_url': currentVariant['ar_model_url'], // String link passes gracefully here
+      'ar_model_url': currentVariant['ar_model_url'],
     };
 
     showModalBottomSheet(
@@ -144,87 +144,158 @@ class _ManageFurnitureState extends State<ManageFurniture> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ PRE-FILTER PRODUCTS FOR THE LISTVIEW TO PREVENT BLANK ROWS OR INDEX RUNTIME ERRORS
     final filteredProducts = _products.where((item) {
-      final productName = item['furniture_name']?.toString().toLowerCase() ?? '';
+      final productName =
+          item['furniture_name']?.toString().toLowerCase() ?? '';
       return productName.contains(query.toLowerCase());
     }).toList();
 
     return Scaffold(
-      backgroundColor: const Color.fromRGBO(249, 246, 241, 1.0),
+      backgroundColor: const Color(0xFFF8F5F1),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // HEADER
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'My Products',
-                  style: TextStyle(
-                    color: Colors.brown,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                OutlinedButton(
-                  onPressed: () => _openAddProductSheet(context),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.brown),
-                  ),
-                  child: const Text(
-                    '+ Add New Product',
-                    style: TextStyle(
-                      color: Colors.brown,
-                      fontSize: 14,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+
+   Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+
+    const Text(
+      'My Products',
+      style: TextStyle(
+      color: Colors.brown,
+      fontSize: 24,
+      fontWeight: FontWeight.bold,
+    ),
+  ),
+
+// ARCHIVE BUTTON
+    OutlinedButton.icon(
+      onPressed: () {
+                    // archive screen
+        },
+        style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(
+        horizontal: 20,
+        vertical: 14,
+      ),
+        side: BorderSide(
+        color: Colors.brown.shade300,
+      ),
+        shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(30),
+      ),
+      ),
+        icon: const Icon(
+        Icons.archive_outlined,
+        color: Colors.brown,
+        size: 20,
+      ),
+        label: const Text(
+        "Archive",
+        style: TextStyle(
+        color: Colors.brown,
+        fontWeight: FontWeight.w500,
+      ),
+    ),
+  ),],
+),
+
+        const SizedBox(height: 18),
+
+        Container(
+          height: 1,
+          width: double.infinity,
+          color: Colors.brown.withOpacity(0.15),
+      ),
+
+          const SizedBox(height: 25),
+
+          Row(
+            children: [
+
+// SEARCH BAR
+          Expanded(
+            child: SizedBox(
+            height: 52,
+            child: TextField(
+            controller: _searchController,
+            onSubmitted: (value) {
+            addToHistory(value);
+          },
+            onChanged: (value) {
+            setState(() {
+            query = value;
+          });
+          },
+            decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.search),
+            hintText: "Search products...",
+            contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12),
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide(
+            color: Colors.brown.withOpacity(0.2),
+          ),
+          ),
+            enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide(
+            color: Colors.brown.withOpacity(0.2),
+          ),
+          ),
+            focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: const BorderSide(
+            color: Colors.brown,
+            width: 1,
+       ),),),
+       ),),),
+
+            const SizedBox(width: 16),
+
+// ADD PRODUCT BUTTON
+                SizedBox(
+                  height: 46,
+                  width: 165,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _openAddProductSheet(context),
+                    style: ElevatedButton.styleFrom(
+                      elevation: 0,
+                      backgroundColor: const Color(0xFF6D4C41),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    icon: const Icon(
+                      Icons.add,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    label: const Text(
+                      "Add New Product",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
 
-            // ✅ SEARCH LABEL
-            const Text(
-              "",
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.black54,
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // ✅ SEARCH BAR
-            SizedBox(
-              width: double.infinity,
-              child: TextField(
-                controller: _searchController,
-                onSubmitted: (value) {
-                  addToHistory(value);
-                },
-                onChanged: (value) {
-                  setState(() {
-                    query = value;
-                  });
-                },
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search),
-                  hintText: "Search products...",
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            // ✅ SEARCH HISTORY
+            // SEARCH HISTORY
             if (searchHistory.isNotEmpty)
               Wrap(
                 spacing: 8,
@@ -256,191 +327,254 @@ class _ManageFurnitureState extends State<ManageFurniture> {
 
             const SizedBox(height: 25),
 
-            // HEADER TABLE
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-              decoration: BoxDecoration(
-                color: Colors.brown.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  _headerItem('Image', flex: 1),
-                  _headerItem('Product Name', flex: 2),
-                  _headerItem('Price', flex: 1),
-                  _headerItem('Category', flex: 2),
-                  _headerItem('Color', flex: 1),
-                  _headerItem('Description', flex: 3),
-                  _headerItem('Edit', flex: 1),
-                  _headerItem('Archive', flex: 1),
-                ],
-              ),
-            ),
-
             Expanded(
-              child: _isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        color: Colors.brown,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: Colors.brown.withOpacity(0.1),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+
+                    // TABLE HEADER
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 16,
+                        horizontal: 8,
                       ),
-                    )
-                  : filteredProducts.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No products found.',
-                            style: TextStyle(color: Colors.brown),
-                          ),
-                        )
-                      : ListView.builder(
-                          itemCount: filteredProducts.length,
-                          itemBuilder: (context, index) {
-                            final item = filteredProducts[index];
-                            final int furnitureId = item['furniture_id'];
+                      decoration: BoxDecoration(
+                        color: Colors.brown.withOpacity(0.04),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(18),
+                          topRight: Radius.circular(18),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          _headerItem('Image', flex: 1),
+                          _headerItem('Product Name', flex: 2),
+                          _headerItem('Price', flex: 1),
+                          _headerItem('Category', flex: 2),
+                          _headerItem('Color', flex: 1),
+                          _headerItem('Description', flex: 3),
+                          _headerItem('Edit', flex: 1),
+                          _headerItem('Archive', flex: 1),
+                        ],
+                      ),
+                    ),
 
-                            final categoryName = item['CATEGORY']?['category_name'] ?? 'N/A';
-
-                            final List<dynamic> variants = item['VARIANT'] is List 
-                                ? item['VARIANT'] 
-                                : [];
-
-                            final String currentSelection = _selectedColors[furnitureId] ??
-                                (variants.isNotEmpty
-                                    ? variants.first['color'].toString()
-                                    : 'N/A');
-
-                            final currentVariant = variants.firstWhere(
-                              (v) => v['color'].toString() == currentSelection,
-                              orElse: () => variants.isNotEmpty ? variants.first : null,
-                            );
-
-                            final imageUrl = currentVariant?['image_url']?.toString();
-
-                            return Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: Colors.brown.withOpacity(0.1),
-                                  ),
-                                ),
+                    // PRODUCTS
+                    Expanded(
+                      child: _isLoading
+                          ? const Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.brown,
                               ),
-                              child: Row(
-                                children: [
-                                  // IMAGE
-                                  Expanded(
-                                    flex: 1,
-                                    child: Center(
-                                      child: imageUrl != null && imageUrl.isNotEmpty
-                                          ? ClipRRect(
-                                              borderRadius: BorderRadius.circular(4),
-                                              child: Image.network(
-                                                imageUrl,
-                                                height: 40,
-                                                width: 40,
-                                                fit: BoxFit.cover,
-                                              ),
-                                            )
-                                          : const Icon(
-                                              Icons.chair,
-                                              color: Colors.grey,
-                                            ),
+                            )
+                          : filteredProducts.isEmpty
+                              ? const Center(
+                                  child: Text(
+                                    'No products found.',
+                                    style: TextStyle(
+                                      color: Colors.brown,
                                     ),
                                   ),
+                                )
+                              : ListView.builder(
+                                  itemCount: filteredProducts.length,
+                                  itemBuilder: (context, index) {
+                                    final item = filteredProducts[index];
+                                    final int furnitureId =
+                                        item['furniture_id'];
 
-                                  _dataItem(
-                                    item['furniture_name']?.toString() ?? 'No Name',
-                                    flex: 2,
-                                  ),
+                                    final categoryName =
+                                        item['CATEGORY']
+                                                ?['category_name'] ??
+                                            'N/A';
 
-                                  _dataItem(
-                                    '₱ ${_formatPrice(item['price'])}',
-                                    flex: 1,
-                                  ),
+                                    final List<dynamic> variants =
+                                        item['VARIANT'] is List
+                                            ? item['VARIANT']
+                                            : [];
 
-                                  _dataItem(
-                                    categoryName,
-                                    flex: 2,
-                                  ),
+                                    final String currentSelection =
+                                        _selectedColors[furnitureId] ??
+                                            (variants.isNotEmpty
+                                                ? variants.first['color']
+                                                    .toString()
+                                                : 'N/A');
 
-                                  // COLOR DROPDOWN
-                                  Expanded(
-                                    flex: 1,
-                                    child: variants.length > 1
-                                        ? DropdownButtonHideUnderline(
-                                            child: DropdownButton<String>(
-                                              value: currentSelection,
-                                              isExpanded: true,
-                                              icon: const Icon(
-                                                Icons.arrow_drop_down,
-                                                size: 16,
-                                                color: Colors.brown,
-                                              ),
-                                              items: variants.map((v) {
-                                                return DropdownMenuItem<String>(
-                                                  value: v['color'].toString(),
-                                                  child: Center(
-                                                    child: Text(
-                                                      v['color'].toString(),
+                                    final currentVariant = variants.firstWhere(
+                                      (v) =>
+                                          v['color'].toString() ==
+                                          currentSelection,
+                                      orElse: () => variants.isNotEmpty
+                                          ? variants.first
+                                          : null,
+                                    );
+
+                                    final imageUrl = currentVariant?['image_url']
+                                        ?.toString();
+
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 14,
+                                        horizontal: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            color: Colors.brown.withOpacity(0.08),
+                                          ),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+
+                                          // IMAGE
+                                          Expanded(
+                                            flex: 1,
+                                            child: Center(
+                                              child: imageUrl != null &&
+                                                      imageUrl.isNotEmpty
+                                                  ? ClipRRect(
+                                                      borderRadius:
+                                                          BorderRadius.circular(8),
+                                                      child: Image.network(
+                                                        imageUrl,
+                                                        height: 45,
+                                                        width: 45,
+                                                        fit: BoxFit.cover,
+                                                      ),
+                                                    )
+                                                  : const Icon(
+                                                      Icons.chair,
+                                                      color: Colors.grey,
                                                     ),
-                                                  ),
-                                                );
-                                              }).toList(),
-                                              onChanged: (String? newValue) {
-                                                if (newValue != null) {
-                                                  setState(() {
-                                                    _selectedColors[furnitureId] = newValue;
-                                                  });
-                                                }
-                                              },
                                             ),
-                                          )
-                                        : _dataItem(
-                                            currentSelection,
+                                          ),
+
+                                          _dataItem(
+                                            item['furniture_name']
+                                                    ?.toString() ??
+                                                'No Name',
+                                            flex: 2,
+                                          ),
+
+                                          _dataItem(
+                                            '₱ ${_formatPrice(item['price'])}',
                                             flex: 1,
                                           ),
-                                  ),
 
-                                  _dataItem(
-                                    item['description']?.toString() ?? 'No Description',
-                                    flex: 3,
-                                  ),
+                                          _dataItem(
+                                            categoryName,
+                                            flex: 2,
+                                          ),
 
-                                  // EDIT
-                                  Expanded(
-                                    flex: 1,
-                                    child: Center(
-                                      child: IconButton(
-                                        icon: const Icon(
-                                          Icons.edit_note,
-                                          color: Colors.brown,
-                                        ),
-                                        onPressed: () => _openEditProductSheet(
-                                          context,
-                                          item,
-                                          currentVariant,
-                                        ),
+                                          // COLOR
+                                          Expanded(
+                                            flex: 1,
+                                            child: variants.length > 1
+                                                ? DropdownButtonHideUnderline(
+                                                    child:
+                                                        DropdownButton<String>(
+                                                      value: currentSelection,
+                                                      isExpanded: true,
+                                                      icon: const Icon(
+                                                        Icons.arrow_drop_down,
+                                                        size: 16,
+                                                        color: Colors.brown,
+                                                      ),
+                                                      items:
+                                                          variants.map((v) {
+                                                        return DropdownMenuItem<
+                                                            String>(
+                                                          value: v['color']
+                                                              .toString(),
+                                                          child: Center(
+                                                            child: Text(
+                                                              v['color']
+                                                                  .toString(),
+                                                            ),
+                                                          ),
+                                                        );
+                                                      }).toList(),
+                                                      onChanged:
+                                                          (String? newValue) {
+                                                        if (newValue != null) {
+                                                          setState(() {
+                                                            _selectedColors[
+                                                                    furnitureId] =
+                                                                newValue;
+                                                          });
+                                                        }
+                                                      },
+                                                    ),
+                                                  )
+                                                : _dataItem(
+                                                    currentSelection,
+                                                    flex: 1,
+                                                  ),
+                                          ),
+
+                                          _dataItem(
+                                            item['description']
+                                                    ?.toString() ??
+                                                'No Description',
+                                            flex: 3,
+                                          ),
+
+                                          // EDIT
+                                          Expanded(
+                                            flex: 1,
+                                            child: Center(
+                                              child: IconButton(
+                                                icon: const Icon(
+                                                  Icons.edit_note,
+                                                  color: Colors.brown,
+                                                ),
+                                                onPressed: () =>
+                                                    _openEditProductSheet(
+                                                  context,
+                                                  item,
+                                                  currentVariant,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+
+                                          // ARCHIVE
+                                          Expanded(
+                                            flex: 1,
+                                            child: Center(
+                                              child: IconButton(
+                                                icon: const Icon(
+                                                  Icons.archive,
+                                                  color: Colors.brown,
+                                                ),
+                                                onPressed: () {},
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ),
-                                  ),
-
-                                  // ARCHIVE
-                                  Expanded(
-                                    flex: 1,
-                                    child: Center(
-                                      child: IconButton(
-                                        icon: const Icon(
-                                          Icons.archive,
-                                          color: Colors.brown,
-                                        ),
-                                        onPressed: () {},
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
+                                    );
+                                  },
+                                ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -480,4 +614,4 @@ Widget _dataItem(String text, {int flex = 1}) {
       overflow: TextOverflow.ellipsis,
     ),
   );
-} 
+}
