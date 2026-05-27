@@ -39,6 +39,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
         receipt_id,
         issued_at,
         preorder_id,
+        message,
         PREORDER (
           status,
           customer_id,
@@ -73,57 +74,155 @@ class _ManageReceiptState extends State<ManageReceipt> {
     }
   }
 
+  Future<void> _showDenyDialog(dynamic preorderId, dynamic receiptId) async {
+    final TextEditingController messageController = TextEditingController();
+    bool confirmed = false;
+    String enteredMessage = '';
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: const Color(0xFFF9F6F1),
+        title: const Text(
+          "Deny Receipt",
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.brown),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Please provide a reason for denying this receipt:",
+              style: TextStyle(fontSize: 14, color: Colors.black54),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: messageController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: "Enter denial reason...",
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.black12),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.brown),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel", style: TextStyle(color: Colors.black38)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              enteredMessage = messageController.text.trim();
+              confirmed = true;
+              Navigator.pop(ctx);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFB06A6A),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 0,
+            ),
+            child: const Text("Confirm Deny"),
+          ),
+        ],
+      ),
+    );
+
+    messageController.dispose();
+
+    if (confirmed && mounted) {
+      Navigator.pop(context);
+      await _updateStatus(preorderId, 'Denied', receiptId: receiptId, message: enteredMessage);
+    }
+  }
+
   Future<void> _updateStatus(
     dynamic preorderId,
-    String newStatus,
-  ) async {
+    String newStatus, {
+    dynamic receiptId,
+    String? message,
+  }) async {
     try {
-      if (mounted) {
-        setState(() => _isLoading = true);
-      }
+      if (mounted) setState(() => _isLoading = true);
 
-      Navigator.pop(context);
-
-      final updatedData = await _supabase
+      final updatedPreorder = await _supabase
           .from('PREORDER')
           .update({'status': newStatus})
           .eq('preorder_id', preorderId)
           .select();
 
-      if (updatedData == null || updatedData.isEmpty) {
-        debugPrint("⚠️ WARNING: No rows were updated! Check your Supabase RLS Update policies for table 'PREORDER'.");
-        
+      debugPrint("✅ PREORDER update result: $updatedPreorder");
+
+      if (updatedPreorder == null || updatedPreorder.isEmpty) {
+        debugPrint("⚠️ No PREORDER rows updated. Check RLS.");
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text("Database update failed! Please check your Supabase RLS write permissions."),
+              content: Text("PREORDER update failed! Check Supabase RLS write permissions."),
               backgroundColor: Colors.orange,
             ),
           );
-          await _fetchSupabaseData();
+          setState(() => _isLoading = false);
         }
         return;
       }
 
+      if (newStatus == 'Denied' && receiptId != null) {
+        debugPrint("📝 Writing message to RECEIPT receipt_id=$receiptId: '$message'");
+
+        final updatedReceipt = await _supabase
+            .from('RECEIPT')
+            .update({'message': message ?? ''})
+            .eq('receipt_id', receiptId)
+            .select();
+
+        debugPrint("✅ RECEIPT message update result: $updatedReceipt");
+
+        if (updatedReceipt == null || updatedReceipt.isEmpty) {
+          debugPrint("⚠️ RECEIPT message update failed. Check RLS UPDATE policy for RECEIPT table.");
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Message save failed! Check Supabase RLS UPDATE policy for RECEIPT table."),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
+      }
+
       if (mounted) {
-        setState(() {
-          selectedTab = newStatus; 
-        });
-        
+        setState(() => selectedTab = newStatus);
         await _fetchSupabaseData();
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Receipt marked as $newStatus"),
-            backgroundColor: newStatus.toLowerCase() == 'approved' ? Colors.green : Colors.redAccent,
+            content: Text(
+              newStatus == 'Denied'
+                  ? "Receipt denied${message != null && message.isNotEmpty ? ': $message' : '.'}"
+                  : "Receipt marked as $newStatus",
+            ),
+            backgroundColor: newStatus.toLowerCase() == 'approved'
+                ? Colors.green
+                : Colors.redAccent,
           ),
         );
       }
     } catch (e) {
-      debugPrint("Update Error: $e");
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      debugPrint("❌ Update Error: $e");
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -150,7 +249,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
     if (query.isNotEmpty) {
       return 'There are no receipts matching "$query" under $selectedTab';
     }
-    
     switch (selectedTab.toLowerCase()) {
       case 'approved':
         return 'There are no "approved" receipts';
@@ -171,6 +269,10 @@ class _ManageReceiptState extends State<ManageReceipt> {
     final customerName = customerData != null ? (customerData['full_name'] ?? 'Unknown Customer') : 'Unknown Customer';
     final customerPhone = customerData != null ? (customerData['phone'] ?? 'N/A') : 'N/A';
     final targetPreorderId = receipt['preorder_id'];
+    final targetReceiptId = receipt['receipt_id'];
+    final String? denialMessage = receipt['message'] as String?;
+    final String currentStatus = (preorder['status'] ?? 'Pending').toString();
+
     final List<Map<String, dynamic>> flattenedCustomerItems = [];
     double calculatedGrandTotal = 0.0;
 
@@ -184,33 +286,24 @@ class _ManageReceiptState extends State<ManageReceipt> {
         p = pRaw;
       }
 
-      if (p != null) {
-        final pCustomerId = p['customer_id'];
-        
-        if (pCustomerId == currentCustomerId) {
-          final List itemsList = p['PREORDER_ITEMS'] ?? p['preorder_items'] ?? [];
-          
-          for (var item in itemsList) {
-            final furnitureData = item['FURNITURE'] ?? item['furniture'];
-            final String name = furnitureData != null 
-                ? (furnitureData['furniture_name'] ?? "Unknown Furniture")
-                : "Unknown Furniture";
-            
-            final int qty = (item['quantity'] ?? 0) as int;
-            final double unitPrice = furnitureData != null 
-                ? (furnitureData['price'] ?? 0.0).toDouble() 
-                : 0.0;
-            
-            final double computedLineTotal = qty * unitPrice;
-            calculatedGrandTotal += computedLineTotal;
+      if (p != null && p['customer_id'] == currentCustomerId) {
+        final List itemsList = p['PREORDER_ITEMS'] ?? p['preorder_items'] ?? [];
+        for (var item in itemsList) {
+          final furnitureData = item['FURNITURE'] ?? item['furniture'];
+          final String name = furnitureData != null
+              ? (furnitureData['furniture_name'] ?? "Unknown Furniture")
+              : "Unknown Furniture";
+          final int qty = (item['quantity'] ?? 0) as int;
+          final double unitPrice =
+              furnitureData != null ? (furnitureData['price'] ?? 0.0).toDouble() : 0.0;
+          final double computedLineTotal = qty * unitPrice;
+          calculatedGrandTotal += computedLineTotal;
 
-            // Added explicit map literal type definition to clear compilation error
-            flattenedCustomerItems.add(<String, dynamic>{
-              'furniture_name': name,
-              'quantity': qty,
-              'line_total': computedLineTotal,
-            });
-          }
+          flattenedCustomerItems.add(<String, dynamic>{
+            'furniture_name': name,
+            'quantity': qty,
+            'line_total': computedLineTotal,
+          });
         }
       }
     }
@@ -225,6 +318,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -234,52 +328,101 @@ class _ManageReceiptState extends State<ManageReceipt> {
                     children: [
                       Text(
                         "Customer Items (ID: $currentCustomerId)",
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black54),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black54),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         "Name: $customerName",
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.brown),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 14, color: Colors.brown),
                       ),
                     ],
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        "Email: $customerEmail",
-                        style: const TextStyle(color: Colors.black45, fontSize: 14),
-                      ),
+                      Text("Email: $customerEmail",
+                          style: const TextStyle(color: Colors.black45, fontSize: 14)),
                       const SizedBox(height: 2),
-                      Text(
-                        "Phone: $customerPhone",
-                        style: const TextStyle(color: Colors.black45, fontSize: 14),
-                      ),
+                      Text("Phone: $customerPhone",
+                          style: const TextStyle(color: Colors.black45, fontSize: 14)),
                     ],
                   ),
                 ],
               ),
               const Divider(height: 30, thickness: 1.2),
+
+              // Denial message banner
+              if (currentStatus.toLowerCase() == 'denied' &&
+                  denialMessage != null &&
+                  denialMessage.isNotEmpty) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.cancel_outlined, color: Colors.red.shade400, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Denial Reason",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              denialMessage,
+                              style: TextStyle(fontSize: 13, color: Colors.red.shade800),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // Items list header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: const [
                   Expanded(
                     flex: 4,
-                    child: Text("All Preordered Furniture:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+                    child: Text("All Preordered Furniture:",
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
                   ),
                   Expanded(
                     flex: 2,
-                    child: Text("Item Price", textAlign: TextAlign.end, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+                    child: Text("Item Price",
+                        textAlign: TextAlign.end,
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
+
+              // Items list
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 200),
                 child: flattenedCustomerItems.isEmpty
                     ? const Padding(
                         padding: EdgeInsets.symmetric(vertical: 20),
-                        child: Text("No items found for this customer.", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
+                        child: Text("No items found for this customer.",
+                            style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
                       )
                     : ListView.builder(
                         shrinkWrap: true,
@@ -295,13 +438,15 @@ class _ManageReceiptState extends State<ManageReceipt> {
                                   flex: 4,
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.check_box_outlined, size: 20, color: Colors.black54),
+                                      const Icon(Icons.lens,
+                                          size: 10, color: Colors.brown),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Text(
                                           "${item['furniture_name']} (${item['quantity']})",
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontSize: 14, color: Colors.black87),
+                                          style: const TextStyle(
+                                              fontSize: 14, color: Colors.black87),
                                         ),
                                       ),
                                     ],
@@ -312,7 +457,10 @@ class _ManageReceiptState extends State<ManageReceipt> {
                                   child: Text(
                                     "₱${item['line_total'].toStringAsFixed(2)}",
                                     textAlign: TextAlign.end,
-                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+                                    style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.black87),
                                   ),
                                 ),
                               ],
@@ -323,51 +471,72 @@ class _ManageReceiptState extends State<ManageReceipt> {
               ),
               const SizedBox(height: 10),
               const Divider(thickness: 1.0, color: Colors.black12),
+
+              // Total
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text("Total Price:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black54)),
+                    const Text("Total Price:",
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black54)),
                     Text(
                       "₱${calculatedGrandTotal.toStringAsFixed(2)}",
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.brown),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 18, color: Colors.brown),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  ElevatedButton(
-                    onPressed: () => _updateStatus(targetPreorderId, 'Approved'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE6DED6),
-                      foregroundColor: Colors.brown,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      elevation: 0,
+
+              // Action buttons
+              if (currentStatus.toLowerCase() == 'pending')
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _updateStatus(targetPreorderId, 'Approved');
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFE6DED6),
+                        foregroundColor: Colors.brown,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        elevation: 0,
+                      ),
+                      child: const Text("Approve Receipt"),
                     ),
-                    child: const Text("Approve Receipt"),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    onPressed: () => _updateStatus(targetPreorderId, 'Denied'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFB06A6A),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      elevation: 0,
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: () => _showDenyDialog(targetPreorderId, targetReceiptId),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFB06A6A),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        elevation: 0,
+                      ),
+                      child: const Text("Deny Receipt"),
                     ),
-                    child: const Text("Deny Receipt"),
-                  ),
-                  const SizedBox(width: 12),
-                  TextButton(
+                    const SizedBox(width: 12),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("Close", style: TextStyle(color: Colors.black38)),
+                    ),
+                  ],
+                )
+              else
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: const Text("Close", style: TextStyle(color: Colors.black38)),
                   ),
-                ],
-              )
+                ),
             ],
           ),
         ),
@@ -377,7 +546,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
 
   Widget _buildChromeTab(String title) {
     int count = 0;
-
     for (var receipt in _allReceipts) {
       final dynamic preorderRaw = receipt['PREORDER'] ?? receipt['preorder'];
       Map<String, dynamic>? preorder;
@@ -389,21 +557,14 @@ class _ManageReceiptState extends State<ManageReceipt> {
       }
 
       final status = preorder?['status'] ?? 'Pending';
-
-      if (status.toString().toLowerCase() == title.toLowerCase()) {
-        count++;
-      }
+      if (status.toString().toLowerCase() == title.toLowerCase()) count++;
     }
 
     final bool isSelected = selectedTab.toLowerCase() == title.toLowerCase();
 
     return Expanded(
       child: GestureDetector(
-        onTap: () {
-          setState(() {
-            selectedTab = title;
-          });
-        },
+        onTap: () => setState(() => selectedTab = title),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeInOut,
@@ -416,36 +577,32 @@ class _ManageReceiptState extends State<ManageReceipt> {
               ),
             ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                      color: isSelected ? Colors.black87 : Colors.black45,
-                    ),
-                  ),
-                  if (count > 0) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF7A9E9F),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        count.toString(),
-                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ],
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected ? Colors.black87 : Colors.black45,
+                ),
               ),
+              if (count > 0) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7A9E9F),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    count.toString(),
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -467,7 +624,8 @@ class _ManageReceiptState extends State<ManageReceipt> {
             children: [
               const Text(
                 'Customer Receipts',
-                style: TextStyle(color: Colors.brown, fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                    color: Colors.brown, fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
               TextField(
@@ -478,11 +636,11 @@ class _ManageReceiptState extends State<ManageReceipt> {
                   hintText: "Search by Receipt ID...",
                   filled: true,
                   fillColor: Colors.white,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30)),
                 ),
               ),
               const SizedBox(height: 30),
-              
               Center(
                 child: Container(
                   width: double.infinity,
@@ -491,12 +649,16 @@ class _ManageReceiptState extends State<ManageReceipt> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: const [
-                      BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4)),
+                      BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 10,
+                          offset: Offset(0, 4)),
                     ],
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Tabs
                       Padding(
                         padding: const EdgeInsets.only(top: 8.0, left: 16, right: 16),
                         child: Row(
@@ -507,11 +669,15 @@ class _ManageReceiptState extends State<ManageReceipt> {
                           ],
                         ),
                       ),
-                      
+
+                      // Table header
                       Container(
-                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 14, horizontal: 16),
                         decoration: const BoxDecoration(
-                          border: Border(bottom: BorderSide(color: Colors.black12, width: 1.5)),
+                          border: Border(
+                              bottom:
+                                  BorderSide(color: Colors.black12, width: 1.5)),
                         ),
                         child: Row(
                           children: const [
@@ -524,7 +690,8 @@ class _ManageReceiptState extends State<ManageReceipt> {
                           ],
                         ),
                       ),
-                      
+
+                      // Body
                       if (_isLoading)
                         const Padding(
                           padding: EdgeInsets.all(40.0),
@@ -536,7 +703,8 @@ class _ManageReceiptState extends State<ManageReceipt> {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.assignment_turned_in_outlined, size: 48, color: Colors.grey.shade400),
+                              Icon(Icons.assignment_turned_in_outlined,
+                                  size: 48, color: Colors.grey.shade400),
                               const SizedBox(height: 12),
                               Text(
                                 _getEmptyMessage(),
@@ -553,7 +721,8 @@ class _ManageReceiptState extends State<ManageReceipt> {
                       else
                         Column(
                           children: filteredReceipts.map((receipt) {
-                            final dynamic preorderRaw = receipt['PREORDER'] ?? receipt['preorder'];
+                            final dynamic preorderRaw =
+                                receipt['PREORDER'] ?? receipt['preorder'];
                             Map<String, dynamic>? preorder;
 
                             if (preorderRaw is List && preorderRaw.isNotEmpty) {
@@ -562,12 +731,19 @@ class _ManageReceiptState extends State<ManageReceipt> {
                               preorder = preorderRaw;
                             }
 
-                            final customerData = preorder != null ? (preorder['CUSTOMER'] ?? preorder['customer']) : null;
-                            String email = customerData != null ? (customerData['gmail'] ?? 'N/A') : 'N/A';
+                            final customerData = preorder != null
+                                ? (preorder['CUSTOMER'] ?? preorder['customer'])
+                                : null;
+                            final String email = customerData != null
+                                ? (customerData['gmail'] ?? 'N/A')
+                                : 'N/A';
                             int totalQuantity = 0;
 
                             if (preorder != null) {
-                              final List itemsList = preorder['PREORDER_ITEMS'] ?? preorder['preorder_items'] ?? [];
+                              final List itemsList =
+                                  preorder['PREORDER_ITEMS'] ??
+                                      preorder['preorder_items'] ??
+                                      [];
                               for (var i in itemsList) {
                                 totalQuantity += (i['quantity'] ?? 0) as int;
                               }
@@ -578,8 +754,11 @@ class _ManageReceiptState extends State<ManageReceipt> {
                               receipt['issued_at'].toString().substring(0, 10),
                               email,
                               totalQuantity.toString(),
-                              preorder != null ? (preorder['status'] ?? 'Pending') : 'Pending',
-                              onView: () => _showReceiptDetails(receipt, preorder!),
+                              preorder != null
+                                  ? (preorder['status'] ?? 'Pending')
+                                  : 'Pending',
+                              onView: () =>
+                                  _showReceiptDetails(receipt, preorder!),
                             );
                           }).toList(),
                         ),
@@ -616,12 +795,13 @@ class _ManageReceiptState extends State<ManageReceipt> {
           Expanded(
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
-                  color: status.toLowerCase() == 'pending' 
+                  color: status.toLowerCase() == 'pending'
                       ? const Color(0xFFEBE3D5)
-                      : status.toLowerCase() == 'approved' 
-                          ? Colors.green.shade100 
+                      : status.toLowerCase() == 'approved'
+                          ? Colors.green.shade100
                           : Colors.red.shade100,
                   borderRadius: BorderRadius.circular(20),
                 ),
@@ -629,10 +809,10 @@ class _ManageReceiptState extends State<ManageReceipt> {
                   status,
                   style: TextStyle(
                     fontSize: 12,
-                    color: status.toLowerCase() == 'pending' 
-                        ? Colors.black87 
-                        : status.toLowerCase() == 'approved' 
-                            ? Colors.green.shade800 
+                    color: status.toLowerCase() == 'pending'
+                        ? Colors.black87
+                        : status.toLowerCase() == 'approved'
+                            ? Colors.green.shade800
                             : Colors.red.shade800,
                   ),
                 ),
@@ -645,7 +825,8 @@ class _ManageReceiptState extends State<ManageReceipt> {
                 onTap: onView,
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF6F4F0),
                     borderRadius: BorderRadius.circular(20),
@@ -659,7 +840,10 @@ class _ManageReceiptState extends State<ManageReceipt> {
                   ),
                   child: const Text(
                     "View",
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87),
                   ),
                 ),
               ),
@@ -681,7 +865,8 @@ class HeaderText extends StatelessWidget {
       child: Text(
         text,
         textAlign: TextAlign.center,
-        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+        style: const TextStyle(
+            fontWeight: FontWeight.bold, color: Colors.black87),
       ),
     );
   }
