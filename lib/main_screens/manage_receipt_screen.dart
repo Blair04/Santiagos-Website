@@ -45,7 +45,8 @@ class _ManageReceiptState extends State<ManageReceipt> {
           total_price,
           CUSTOMER (
             gmail,
-            full_name
+            full_name,
+            phone
           ),
           PREORDER_ITEMS (
             quantity,
@@ -126,7 +127,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
     }
   }
 
-  // Returns the filtered list for row rendering and empty check evaluations
   List<Map<String, dynamic>> _getFilteredReceiptsList() {
     return _allReceipts.where((receipt) {
       final dynamic preorderRaw = receipt['PREORDER'] ?? receipt['preorder'];
@@ -146,7 +146,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
     }).toList();
   }
 
-  // Returns matching empty placeholder text depending on the chosen Chrome tab view context
   String _getEmptyMessage() {
     if (query.isNotEmpty) {
       return 'There are no receipts matching "$query" under $selectedTab';
@@ -170,7 +169,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
     final currentCustomerId = preorder['customer_id'];
     final customerEmail = customerData != null ? (customerData['gmail'] ?? 'N/A') : 'N/A';
     final customerName = customerData != null ? (customerData['full_name'] ?? 'Unknown Customer') : 'Unknown Customer';
-
+    final customerPhone = customerData != null ? (customerData['phone'] ?? 'N/A') : 'N/A';
     final targetPreorderId = receipt['preorder_id'];
     final List<Map<String, dynamic>> flattenedCustomerItems = [];
     double calculatedGrandTotal = 0.0;
@@ -205,7 +204,8 @@ class _ManageReceiptState extends State<ManageReceipt> {
             final double computedLineTotal = qty * unitPrice;
             calculatedGrandTotal += computedLineTotal;
 
-            flattenedCustomerItems.add({
+            // Added explicit map literal type definition to clear compilation error
+            flattenedCustomerItems.add(<String, dynamic>{
               'furniture_name': name,
               'quantity': qty,
               'line_total': computedLineTotal,
@@ -243,9 +243,19 @@ class _ManageReceiptState extends State<ManageReceipt> {
                       ),
                     ],
                   ),
-                  Text(
-                    "Email: $customerEmail",
-                    style: const TextStyle(color: Colors.black45, fontSize: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Email: $customerEmail",
+                        style: const TextStyle(color: Colors.black45, fontSize: 14),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        "Phone: $customerPhone",
+                        style: const TextStyle(color: Colors.black45, fontSize: 14),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -445,7 +455,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
 
   @override
   Widget build(BuildContext context) {
-    // Generate the filtered rows list once per build pass
     final filteredReceipts = _getFilteredReceiptsList();
 
     return Scaffold(
@@ -516,7 +525,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
                         ),
                       ),
                       
-                      // Data Handling Content Blocks
                       if (_isLoading)
                         const Padding(
                           padding: EdgeInsets.all(40.0),
