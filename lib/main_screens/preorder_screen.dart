@@ -32,7 +32,6 @@ class _PreorderState extends State<Preorder> {
     super.dispose();
   }
 
-  /// Fetches furniture names from PREORDER_ITEMS and counts frequencies
   Future<void> _fetchPopularItems() async {
     try {
       final response = await _supabase
@@ -71,7 +70,6 @@ class _PreorderState extends State<Preorder> {
     }
   }
 
-  // Extracted helper to run filter logic so we can check row length easily
   List<Map<String, dynamic>> _getFilteredList() {
     return _popularItems.where((item) {
       return item['name'].toString().toLowerCase().contains(query.toLowerCase());
@@ -80,7 +78,6 @@ class _PreorderState extends State<Preorder> {
 
   @override
   Widget build(BuildContext context) {
-    // Obtain filtered array lengths for the adaptive conditional block below
     final filteredItems = _getFilteredList();
 
     return Scaffold(
@@ -118,7 +115,6 @@ class _PreorderState extends State<Preorder> {
               ),
               const SizedBox(height: 40),
 
-              // ADAPTIVE CONTAINER
               Center(
                 child: Container(
                   width: double.infinity,
@@ -137,7 +133,6 @@ class _PreorderState extends State<Preorder> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min, 
                     children: [
-                      // HEADER
                       Container(
                         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                         decoration: const BoxDecoration(
@@ -153,7 +148,6 @@ class _PreorderState extends State<Preorder> {
                         ),
                       ),
 
-                      // DATA ROWS WITH SEAMLESS EMPTY CONDITIONS
                       if (_isLoading)
                         const Padding(
                           padding: EdgeInsets.all(40.0),

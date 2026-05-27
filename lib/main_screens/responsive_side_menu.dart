@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart'; 
 import 'package:flutter_application_1/main_screens/manage_receipt_screen.dart';
 import 'package:flutter_application_1/main_screens/preorder_screen.dart';
 import 'package:flutter_application_1/main_screens/manage_furniture.dart';
 import 'package:flutter_application_1/main_screens/login_screen.dart'; 
+import 'package:flutter_application_1/main_screens/session_listener.dart'; 
 
 class MainResponsivePage extends StatefulWidget {
   const MainResponsivePage({super.key});
@@ -20,13 +22,27 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
     const Preorder(),  
   ];
 
-  // Root level logout function
-  void _handleLogout() {
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-      (route) => false, // This clears the entire route stack so they can't hit back to return
-    );
+  void _handleLogout({bool wasTimeout = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isAdminLoggedIn', false);
+
+    if (mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (route) => false, 
+      );
+
+      if (wasTimeout) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Logged out due to 20 minutes of inactivity.'),
+            backgroundColor: Colors.orangeAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -35,50 +51,54 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
       builder: (context, constraints) {
         bool isHugeScreen = constraints.maxWidth > 900;
 
-        return Scaffold(
-          backgroundColor: const Color(0xFFFAF6F2), 
-          appBar: isHugeScreen ? null 
-          : AppBar(
-            backgroundColor: const Color(0xFFFAF6F2),
-            title: _getTitle(),
-          ),
-          
-          drawer: isHugeScreen 
-              ? null 
-              : Drawer(
-                  child: NavigationContent(
-                    selectedIndex: _selectedIndex,
-                    onItemSelected: (index) {
-                      setState(() => _selectedIndex = index);
-                      Navigator.pop(context);
-                    },
-                    onLogout: _handleLogout, // Pass down to drawer view
-                  ),
-                ),
-                
-          body: Row(
-            children: [
-              if (isHugeScreen)
-                ClipRRect( 
-                  borderRadius: const BorderRadius.only(
-                    topRight: Radius.circular(30),
-                    bottomRight: Radius.circular(30),
-                  ),
-                  child: Container(
-                    width: 300,
-                    color: const Color(0xFFD8C8BC),
+        return SessionListener(
+          duration: const Duration(minutes: 30), // Triggers after 20 minutes of inactivity
+          onTimeout: () => _handleLogout(wasTimeout: true),
+          child: Scaffold(
+            backgroundColor: const Color(0xFFFAF6F2), 
+            appBar: isHugeScreen ? null 
+            : AppBar(
+              backgroundColor: const Color(0xFFFAF6F2),
+              title: _getTitle(),
+            ),
+            
+            drawer: isHugeScreen 
+                ? null 
+                : Drawer(
                     child: NavigationContent(
                       selectedIndex: _selectedIndex,
                       onItemSelected: (index) {
                         setState(() => _selectedIndex = index);
+                        Navigator.pop(context);
                       },
-                      onLogout: _handleLogout, // Pass down to sidebar view
+                      onLogout: () => _handleLogout(wasTimeout: false), // log out
                     ),
                   ),
-                ),
-                
-              Expanded(child: _screens[_selectedIndex]),
-            ],
+                  
+            body: Row(
+              children: [
+                if (isHugeScreen)
+                  ClipRRect( 
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(30),
+                      bottomRight: Radius.circular(30),
+                    ),
+                    child: Container(
+                      width: 300,
+                      color: const Color(0xFFD8C8BC),
+                      child: NavigationContent(
+                        selectedIndex: _selectedIndex,
+                        onItemSelected: (index) {
+                          setState(() => _selectedIndex = index);
+                        },
+                        onLogout: () => _handleLogout(wasTimeout: false), 
+                      ),
+                    ),
+                  ),
+                  
+                Expanded(child: _screens[_selectedIndex]),
+              ],
+            ),
           ),
         );
       },
@@ -94,14 +114,14 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
 
 class NavigationContent extends StatelessWidget {
   final Function(int) onItemSelected;
-  final VoidCallback onLogout; // Explicit parameter added here
+  final VoidCallback onLogout; 
   final int selectedIndex;
 
   const NavigationContent({
     super.key, 
     required this.onItemSelected, 
     required this.selectedIndex,
-    required this.onLogout, // Required setup parameter
+    required this.onLogout, 
   });
 
   Widget buildNavItem({
@@ -194,13 +214,12 @@ class NavigationContent extends StatelessWidget {
         const Spacer(),
         const Divider(),
 
-        // Log out gesture zone updated
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
             child: GestureDetector(
-              onTap: onLogout, // Executes root function to exit and clear backstack
+              onTap: onLogout, 
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
@@ -208,7 +227,7 @@ class NavigationContent extends StatelessWidget {
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.logout, color: Colors.redAccent), // Swapped out person icon for logout icon
+                    Icon(Icons.logout, color: Colors.redAccent), 
                     SizedBox(width: 12),
                     Text(
                       'Logout',

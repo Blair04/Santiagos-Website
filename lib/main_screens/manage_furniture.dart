@@ -59,9 +59,6 @@ class _ManageFurnitureState extends State<ManageFurniture> {
     }
   }
 
-  // FIXED: Copies data safely using upsert to avoid duplicate key exceptions, then drops from source table
-  // 1. ARCHIVE: Moves item from FURNITURE to FURNITURE_ARCHIVE (including its variants)
-  // ARCHIVE Lifecyle Handshake
   void _archiveProduct(Map<String, dynamic> item) async {
     final furnitureId = item['furniture_id'];
     setState(() => _animatingArchiveId = furnitureId);
@@ -78,7 +75,6 @@ class _ManageFurnitureState extends State<ManageFurniture> {
 
       final List<dynamic> variants = item['VARIANT'] is List ? item['VARIANT'] : [];
 
-      // 1. Write the backup copies to the archive tables first
       await _supabase.from('FURNITURE_ARCHIVE').upsert(furniturePayload);
 
       if (variants.isNotEmpty) {
@@ -92,7 +88,6 @@ class _ManageFurnitureState extends State<ManageFurniture> {
         await _supabase.from('VARIANT_ARCHIVE').upsert(variantsPayload);
       }
 
-      // 2. NOW delete it from active table (The cascade rule clears out active VARIANT rows safely)
       await _supabase.from('FURNITURE').delete().eq('furniture_id', furnitureId);
       
       await Future.delayed(const Duration(milliseconds: 500));
@@ -109,7 +104,6 @@ class _ManageFurnitureState extends State<ManageFurniture> {
     }
   }
 
-  // 2. UNARCHIVE: Moves item from FURNITURE_ARCHIVE back to active FURNITURE (including variants)
   void _unarchiveProduct(Map<String, dynamic> item) async {
     final furnitureId = item['furniture_id'];
     try {
@@ -124,10 +118,8 @@ class _ManageFurnitureState extends State<ManageFurniture> {
 
       final List<dynamic> variants = item['VARIANT'] is List ? item['VARIANT'] : [];
 
-      // Step A: Restore core product specs map signature layout to active table
       await _supabase.from('FURNITURE').upsert(furniturePayload);
 
-      // Step B: Push stored snapshot variations database rows back to production active variants layout
       if (variants.isNotEmpty) {
         final variantsPayload = variants.map((v) => {
           'variant_id': v['variant_id'],
@@ -140,7 +132,6 @@ class _ManageFurnitureState extends State<ManageFurniture> {
         await _supabase.from('VARIANT').upsert(variantsPayload);
       }
 
-      // Step C: Clear out history logs references from your system backup tracking storage tables
       await _supabase.from('FURNITURE_ARCHIVE').delete().eq('furniture_id', furnitureId);
 
       setState(() {
@@ -160,7 +151,6 @@ class _ManageFurnitureState extends State<ManageFurniture> {
   void _openArchiveModal() async {
     String archiveQuery = "";
     try {
-      // Locate this section inside your existing _openArchiveModal function block:
       final response = await _supabase.from('FURNITURE_ARCHIVE').select('''
         furniture_id, furniture_name, description, price, created_at, category_id,
         VARIANT:VARIANT_ARCHIVE ( variant_id, color, image_url )
