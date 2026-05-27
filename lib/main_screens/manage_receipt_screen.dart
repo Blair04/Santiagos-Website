@@ -355,7 +355,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          "Customer Items (ID: $currentCustomerId)",
+                          "Receipt ID: $targetReceiptId",
                           style: const TextStyle(
                               fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black54),
                         ),
