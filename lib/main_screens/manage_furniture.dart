@@ -229,7 +229,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                                       onPressed: () => _unarchiveProduct(item),
                                       style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)), side: BorderSide(color: Colors.brown.shade300)),
                                       icon: const Icon(Icons.unarchive, size: 18, color: Colors.brown),
-                                      label: const Text("Unarchive", style: TextStyle(color: Colors.brown)),
+                                      label: const Text("Restore", style: TextStyle(color: Colors.brown)),
                                     ))),
                                   ],
                                 ),
