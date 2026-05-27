@@ -362,7 +362,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                       child: Row(
                         children: [
                           _headerItem('Image'), _headerItem('Product Name', flex: 2), _headerItem('Price'),
-                          _headerItem('Category', flex: 2), _headerItem('Color'), _headerItem('Description', flex: 3),
+                          _headerItem('Category', flex: 2), _headerItem('Color/Variant', flex:2), _headerItem('Description', flex: 3),
                           _headerItem('Edit'), _headerItem('Archive'),
                         ],
                       ),
