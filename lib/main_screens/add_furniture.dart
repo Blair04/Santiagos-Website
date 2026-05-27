@@ -1,4 +1,3 @@
-//import 'dart:typed_material.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,7 +8,6 @@ import 'package:desktop_drop/desktop_drop.dart';
 final _supabase = Supabase.instance.client;
 
 class AddFurniture extends StatefulWidget {
-  // 1. Added an optional product Map argument to pass existing item data when editing
   final Map<String, dynamic>? editProduct;
 
   const AddFurniture({super.key, this.editProduct});
@@ -39,7 +37,7 @@ class _AddFurnitureState extends State<AddFurniture> {
 
   bool _isUploading = false;
   
-  // SEPARATE HIGHLIGHT STATES
+  // Separate Highlight States
   bool _isDraggingImage = false;
   bool _isDraggingModel = false;
   
@@ -60,7 +58,6 @@ class _AddFurnitureState extends State<AddFurniture> {
     _checkEditMode();
   }
 
-  // 2. Pre-populate form values if an editProduct map is supplied
   void _checkEditMode() {
     if (_isEditing) {
       final p = widget.editProduct!;
@@ -93,7 +90,6 @@ class _AddFurnitureState extends State<AddFurniture> {
           _categories = List<Map<String, dynamic>>.from(catRes);
           _existingFurniture = List<Map<String, dynamic>>.from(furnRes);
           
-          // Only auto-select first category if we aren't editing/already have a selection
           if (_categories.isNotEmpty && _selectedCategoryId == null) {
             _selectedCategoryId = _categories.first['category_id'];
           }
@@ -123,7 +119,6 @@ class _AddFurnitureState extends State<AddFurniture> {
 
   // --- SAVE / UPDATE LOGIC ---
   Future<void> _saveProduct() async {
-    // If not editing, image is mandatory. If editing, we can keep the old one if no new one is uploaded.
     if (!_formKey.currentState!.validate() || (!_isEditing && _imageBytes == null)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please check your inputs and image.')));
       return;
@@ -138,18 +133,38 @@ class _AddFurnitureState extends State<AddFurniture> {
     showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.brown)));
 
     try {
-      // Handle Image assignment (upload new or retain existing)
+      // 1. Generate a Single Shared Base Structure for Filenames
+      final String uniqueTimestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      String namingReference = _nameController.text.trim();
+
+      // If linking to existing product, grab its name from our loaded list to use for file naming
+      if (!_isEditing && _linkToExisting && _selectedFurnitureId != null) {
+        final match = _existingFurniture.firstWhere((f) => f['furniture_id'] == _selectedFurnitureId, orElse: () => {});
+        if (match.isNotEmpty) {
+          namingReference = match['furniture_name'] ?? 'furniture';
+        }
+      }
+
+      // Format name to be url/file safe: "Oak Chair 2" -> "oak_chair_2"
+      final String cleanBaseName = namingReference.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]'), '_');
+      final String baseFileName = '${uniqueTimestamp}_$cleanBaseName';
+
+      // 2. Handle Image assignment (upload with synchronized name)
       String imageUrl = _existingImageUrl ?? '';
       if (_imageBytes != null) {
-        final String imageFileName = '${DateTime.now().millisecondsSinceEpoch}_${_imageName ?? 'img.png'}';
+        final String imgExt = _imageName?.split('.').last ?? 'png';
+        final String imageFileName = '$baseFileName.$imgExt';
+
         await _supabase.storage.from('images').uploadBinary(imageFileName, _imageBytes!);
         imageUrl = _supabase.storage.from('images').getPublicUrl(imageFileName);
       }
 
-      // Handle 3D Model assignment (upload new or retain existing)
+      // 3. Handle 3D Model assignment (upload with synchronized name)
       String arUrl = _existingModelUrl ?? '';
       if (_modelBytes != null) {
-        final String modelFileName = '${DateTime.now().millisecondsSinceEpoch}.${_modelName?.split('.').last ?? 'glb'}';
+        final String modelExt = _modelName?.split('.').last ?? 'glb';
+        final String modelFileName = '$baseFileName.$modelExt';
+
         await _supabase.storage.from('3d_models').uploadBinary(modelFileName, _modelBytes!);
         arUrl = _supabase.storage.from('3d_models').getPublicUrl(modelFileName);
       }
@@ -159,7 +174,6 @@ class _AddFurnitureState extends State<AddFurniture> {
         final furnitureId = widget.editProduct!['furniture_id'];
         final variantId = widget.editProduct!['variant_id'];
 
-        // Update FURNITURE entry
         await _supabase.from('FURNITURE').update({
           'furniture_name': _nameController.text.trim(),
           'description': _descController.text.trim(),
@@ -167,7 +181,6 @@ class _AddFurnitureState extends State<AddFurniture> {
           'category_id': _selectedCategoryId,
         }).eq('furniture_id', furnitureId);
 
-        // Update VARIANT entry
         await _supabase.from('VARIANT').update({
           'color': _colorController.text.trim(),
           'image_url': imageUrl,
@@ -195,7 +208,7 @@ class _AddFurnitureState extends State<AddFurniture> {
           'color': _colorController.text.trim(),
           'image_url': imageUrl,
           'ar_model_url': arUrl,
-          });
+        });
       }
 
       if (mounted) {
@@ -230,7 +243,6 @@ class _AddFurnitureState extends State<AddFurniture> {
               Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
               const SizedBox(height: 16),
               
-              // Dynamic title text based on mode
               Text(_isEditing ? 'Edit Product' : 'Add New Product', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.brown)),
               const SizedBox(height: 20),
               
@@ -240,7 +252,7 @@ class _AddFurnitureState extends State<AddFurniture> {
                     label: 'Image', 
                     icon: Icons.image, 
                     bytes: _imageBytes, 
-                    networkUrl: _existingImageUrl, // Send network URL fallback if editing
+                    networkUrl: _existingImageUrl, 
                     onTap: _pickImage, 
                     isImage: true, 
                     isHighlighted: _isDraggingImage,
@@ -253,7 +265,7 @@ class _AddFurnitureState extends State<AddFurniture> {
                     label: '3D Model', 
                     icon: Icons.view_in_ar, 
                     bytes: _modelBytes, 
-                    networkUrl: _existingModelUrl, // Send network URL fallback if editing
+                    networkUrl: _existingModelUrl, 
                     onTap: _pickModel, 
                     isImage: false, 
                     isHighlighted: _isDraggingModel,
@@ -266,7 +278,6 @@ class _AddFurnitureState extends State<AddFurniture> {
               
               const SizedBox(height: 24),
 
-              // 3. Conditionally hide the "Add to existing furniture" container completely if we are in Edit Mode
               if (!_isEditing) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -289,7 +300,7 @@ class _AddFurnitureState extends State<AddFurniture> {
 
               if (!_isEditing && _linkToExisting) ...[
                 DropdownButtonFormField<int>(
-                  initialValue: _selectedFurnitureId,
+                  value: _selectedFurnitureId,
                   isExpanded: true,
                   decoration: _inputDeco('Select Existing Furniture'),
                   items: _existingFurniture.map((f) => DropdownMenuItem<int>(value: f['furniture_id'], child: Text(f['furniture_name']))).toList(),
@@ -306,7 +317,7 @@ class _AddFurnitureState extends State<AddFurniture> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: DropdownButtonFormField<int>(
-                        value: _selectedCategoryId, // changed initialValue to value to sync properly during setState refreshes
+                        value: _selectedCategoryId, 
                         decoration: _inputDeco('Category'),
                         items: _categories.map((c) => DropdownMenuItem<int>(value: c['category_id'], child: Text(c['category_name']))).toList(),
                         onChanged: (v) => setState(() => _selectedCategoryId = v!),
@@ -334,7 +345,6 @@ class _AddFurnitureState extends State<AddFurniture> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
                   ),
                   child: Text(
-                    // Dynamic action text based on whether adding variants or saving edits
                     _isEditing 
                         ? 'Update Product' 
                         : (_linkToExisting ? 'Confirm & Add Variant' : 'Add New Product'), 
@@ -349,24 +359,24 @@ class _AddFurnitureState extends State<AddFurniture> {
     );
   }
 
- // --- REUSED HELPERS ---
-Widget _buildFilePicker({
-  required String label, 
-  required IconData icon, 
-  Uint8List? bytes, 
-  String? networkUrl, 
-  required VoidCallback onTap, 
-  required bool isImage, 
-  required bool isHighlighted,
-  required VoidCallback onDragEntered,
-  required VoidCallback onDragExited,
-  required Function(Uint8List, String) onFileDropped
-}) {
-  
-  final hasAsset = bytes != null || 
-      (networkUrl != null && networkUrl.isNotEmpty && networkUrl.startsWith('http'));
+  // --- REUSED HELPERS ---
+  Widget _buildFilePicker({
+    required String label, 
+    required IconData icon, 
+    Uint8List? bytes, 
+    String? networkUrl, 
+    required VoidCallback onTap, 
+    required bool isImage, 
+    required bool isHighlighted,
+    required VoidCallback onDragEntered,
+    required VoidCallback onDragExited,
+    required Function(Uint8List, String) onFileDropped
+  }) {
+    
+    final hasAsset = bytes != null || 
+        (networkUrl != null && networkUrl.isNotEmpty && networkUrl.startsWith('http'));
 
-  return Expanded(
+    return Expanded(
       child: DropTarget(
         onDragDone: (detail) async {
           if (detail.files.isNotEmpty) {
@@ -411,7 +421,11 @@ Widget _buildFilePicker({
                     )
                   ]
               ),
-          ),),),);}
+          ),
+        ),
+      ),
+    );
+  }
 
   InputDecoration _inputDeco(String label) => InputDecoration(
     labelText: label, 
