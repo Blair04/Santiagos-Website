@@ -30,13 +30,16 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
   supabase_flutter: ^2.12.0  
-  image_picker: ^1.0.7
-  file_picker: ^8.3.7
-  desktop_drop: ^0.4.4
   cupertino_icons: ^1.0.8
-  easy_sidemenu: ^0.7.1
+  easy_sidemenu: ^1.0.0
   shared_preferences: ^2.3.0
+
+  #supabase_flutter: ^2.6.0  # Or your current version
+  file_picker: ^8.0.0       # Ensure this package is present
+  image_picker: ^1.1.0      # Ensure this package is present
+  desktop_drop: ^0.4.4
 
 dev_dependencies:
   flutter_test:

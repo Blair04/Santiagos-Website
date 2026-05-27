@@ -63,7 +63,6 @@ class _LoginScreenState extends State<LoginScreen> {
           .eq('password', password);
 
       if (adminCheck.isNotEmpty) {
-        // 3. CRUCIAL: Save the admin session flag synchronously to local disk storage
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('isAdminLoggedIn', true);
 
@@ -93,6 +92,153 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
+  }
+
+  // --- PASSWORD OVERWRITE WORKFLOW ---
+  Future<void> _handleForgotPassword() async {
+    final TextEditingController resetEmailController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFF7F4F1),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text(
+          'Reset Admin Password', 
+          style: TextStyle(color: Color(0xFF5C4635), fontWeight: FontWeight.bold)
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter your registered admin email address to verify your account identity.',
+              style: TextStyle(fontSize: 13, color: Colors.black87),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: resetEmailController,
+              keyboardType: TextInputType.emailAddress,
+              style: const TextStyle(fontSize: 14),
+              decoration: _inputDecoration(hintText: 'admin@email.com'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final email = resetEmailController.text.trim();
+              if (email.isEmpty) {
+                _showSnackBar('Please enter your email.', Colors.orangeAccent);
+                return;
+              }
+
+              Navigator.pop(context); // Close the verification email dialog Panel
+              
+              try {
+                // Check if the record actually exists before prompting a reset
+                final res = await _supabase.from('ADMIN').select().eq('email', email);
+                if (res.isEmpty) {
+                  _showSnackBar('Admin email record not found.', Colors.redAccent);
+                  return;
+                }
+
+                // Carry the validated email over to the overwrite dialog window
+                _showNewPasswordDialog(email);
+              } catch (e) {
+                _showSnackBar('Network communication error.', Colors.redAccent);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE4CFB3),
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+            ),
+            child: const Text('Verify', style: TextStyle(color: Color(0xFF4B3525), fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showNewPasswordDialog(String email) {
+    final TextEditingController newPasswordController = TextEditingController();
+    bool isDialogPasswordVisible = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFFF7F4F1),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          title: const Text(
+            'Create New Password', 
+            style: TextStyle(color: Color(0xFF5C4635), fontWeight: FontWeight.bold)
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Resetting credentials for: $email', style: const TextStyle(fontSize: 12, color: Colors.black54)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: newPasswordController,
+                obscureText: !isDialogPasswordVisible,
+                style: const TextStyle(fontSize: 14),
+                decoration: _inputDecoration(
+                  hintText: 'Minimum 6 characters',
+                ).copyWith(
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      isDialogPasswordVisible ? Icons.visibility : Icons.visibility_outlined,
+                      size: 20,
+                      color: Colors.grey.shade600,
+                    ),
+                    onPressed: () {
+                      setDialogState(() {
+                        isDialogPasswordVisible = !isDialogPasswordVisible;
+                      });
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () async {
+                final newPass = newPasswordController.text.trim();
+                if (newPass.length < 6) {
+                  _showSnackBar('Password validation failed: Too short.', Colors.orangeAccent);
+                  return;
+                }
+
+                try {
+                  // CRUCIAL: Targets the exact row with the matching email, updating the password cell
+                  // This fully overwrites the previous password, preventing it from working again.
+                  await _supabase.from('ADMIN').update({'password': newPass}).eq('email', email);
+                  
+                  if (context.mounted) Navigator.pop(context);
+                  _showSnackBar('Password updated successfully! Old password cleared.', Colors.green);
+                } catch (e) {
+                  _showSnackBar('Failed to safely store new credentials.', Colors.redAccent);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4B3525),
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+              ),
+              child: const Text('Update & Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showSnackBar(
@@ -228,7 +374,30 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                
+                // Forgot Password Context Button
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _handleForgotPassword,
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(50, 30),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text(
+                      'Forgot Password?',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF5C4635),
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
 
                 // login button
                 SizedBox(
