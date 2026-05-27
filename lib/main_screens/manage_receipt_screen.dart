@@ -1,3 +1,4 @@
+import 'dart:math' as math; 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -12,29 +13,41 @@ class ManageReceipt extends StatefulWidget {
   State<ManageReceipt> createState() => _ManageReceiptState();
 }
 
-class _ManageReceiptState extends State<ManageReceipt> {
+class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
+  late AnimationController _refreshIconController; 
 
   String query = "";
   String selectedTab = 'Pending';
 
   List<Map<String, dynamic>> _allReceipts = [];
   bool _isLoading = true;
+  bool _isActionLoading = false; 
+  bool _isAscending = true;      
 
   @override
   void initState() {
     super.initState();
+    _refreshIconController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
     _fetchSupabaseData();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _refreshIconController.dispose();
     super.dispose();
   }
 
   Future<void> _fetchSupabaseData() async {
     try {
+      if (mounted && !_isLoading) {
+        _refreshIconController.repeat();
+      }
+
       final response = await _supabase.from('RECEIPT').select('''
         receipt_id,
         issued_at,
@@ -65,11 +78,15 @@ class _ManageReceiptState extends State<ManageReceipt> {
           _allReceipts = List<Map<String, dynamic>>.from(response);
           _isLoading = false;
         });
+        _refreshIconController.forward(from: _refreshIconController.value).then((_) {
+          _refreshIconController.reset();
+        });
       }
     } catch (e) {
       debugPrint("❌ Fetch Error: $e");
       if (mounted) {
         setState(() => _isLoading = false);
+        _refreshIconController.reset();
       }
     }
   }
@@ -155,7 +172,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
     String? message,
   }) async {
     try {
-      if (mounted) setState(() => _isLoading = true);
+      if (mounted) setState(() => _isActionLoading = true);
 
       final updatedPreorder = await _supabase
           .from('PREORDER')
@@ -174,7 +191,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
               backgroundColor: Colors.orange,
             ),
           );
-          setState(() => _isLoading = false);
+          setState(() => _isActionLoading = false);
         }
         return;
       }
@@ -204,7 +221,10 @@ class _ManageReceiptState extends State<ManageReceipt> {
       }
 
       if (mounted) {
-        setState(() => selectedTab = newStatus);
+        setState(() {
+          selectedTab = newStatus;
+          _isActionLoading = false;
+        });
         await _fetchSupabaseData();
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -222,12 +242,12 @@ class _ManageReceiptState extends State<ManageReceipt> {
       }
     } catch (e) {
       debugPrint("❌ Update Error: $e");
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isActionLoading = false);
     }
   }
 
   List<Map<String, dynamic>> _getFilteredReceiptsList() {
-    return _allReceipts.where((receipt) {
+    final filtered = _allReceipts.where((receipt) {
       final dynamic preorderRaw = receipt['PREORDER'] ?? receipt['preorder'];
       Map<String, dynamic>? preorder;
 
@@ -243,6 +263,14 @@ class _ManageReceiptState extends State<ManageReceipt> {
 
       return matchesSearch && matchesTab;
     }).toList();
+
+    filtered.sort((a, b) {
+      final idA = int.tryParse(a['receipt_id'].toString()) ?? 0;
+      final idB = int.tryParse(b['receipt_id'].toString()) ?? 0;
+      return _isAscending ? idA.compareTo(idB) : idB.compareTo(idA);
+    });
+
+    return filtered;
   }
 
   String _getEmptyMessage() {
@@ -310,234 +338,186 @@ class _ManageReceiptState extends State<ManageReceipt> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-        backgroundColor: const Color(0xFFF9F6F1),
-        content: SizedBox(
-          width: 550,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Customer Items (ID: $currentCustomerId)",
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black54),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        "Name: $customerName",
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 14, color: Colors.brown),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Email: $customerEmail",
-                          style: const TextStyle(color: Colors.black45, fontSize: 14)),
-                      const SizedBox(height: 2),
-                      Text("Phone: $customerPhone",
-                          style: const TextStyle(color: Colors.black45, fontSize: 14)),
-                    ],
-                  ),
-                ],
-              ),
-              const Divider(height: 30, thickness: 1.2),
-
-              // Denial message banner
-              if (currentStatus.toLowerCase() == 'denied' &&
-                  denialMessage != null &&
-                  denialMessage.isNotEmpty) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.red.shade200),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.cancel_outlined, color: Colors.red.shade400, size: 20),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "Denial Reason",
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: Colors.red.shade700,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              denialMessage,
-                              style: TextStyle(fontSize: 13, color: Colors.red.shade800),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              // Items list header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
-                  Expanded(
-                    flex: 4,
-                    child: Text("All Preordered Furniture:",
-                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Text("Item Price",
-                        textAlign: TextAlign.end,
-                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Items list
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 200),
-                child: flattenedCustomerItems.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 20),
-                        child: Text("No items found for this customer.",
-                            style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
-                      )
-                    : ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: flattenedCustomerItems.length,
-                        itemBuilder: (context, index) {
-                          final item = flattenedCustomerItems[index];
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 6.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  flex: 4,
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.lens,
-                                          size: 10, color: Colors.brown),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Text(
-                                          "${item['furniture_name']} (${item['quantity']})",
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                              fontSize: 14, color: Colors.black87),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 2,
-                                  child: Text(
-                                    "₱${item['line_total'].toStringAsFixed(2)}",
-                                    textAlign: TextAlign.end,
-                                    style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.black87),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-              ),
-              const SizedBox(height: 10),
-              const Divider(thickness: 1.0, color: Colors.black12),
-
-              // Total
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-                child: Row(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+          backgroundColor: const Color(0xFFF9F6F1),
+          content: SizedBox(
+            width: 550,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text("Total Price:",
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black54)),
-                    Text(
-                      "₱${calculatedGrandTotal.toStringAsFixed(2)}",
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 18, color: Colors.brown),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Customer Items (ID: $currentCustomerId)",
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black54),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          "Name: $customerName",
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 14, color: Colors.brown),
+                        ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Email: $customerEmail",
+                            style: const TextStyle(color: Colors.black45, fontSize: 14)),
+                        const SizedBox(height: 2),
+                        Text("Phone: $customerPhone",
+                            style: const TextStyle(color: Colors.black45, fontSize: 14)),
+                      ],
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 24),
+                const Divider(height: 30, thickness: 1.2),
 
-              // Action buttons
-              if (currentStatus.toLowerCase() == 'pending')
+                if (currentStatus.toLowerCase() == 'denied' &&
+                    denialMessage != null &&
+                    denialMessage.isNotEmpty) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.cancel_outlined, color: Colors.red.shade400, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Denial Reason",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: Colors.red.shade700,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                denialMessage,
+                                style: TextStyle(fontSize: 13, color: Colors.red.shade800),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _updateStatus(targetPreorderId, 'Approved');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFE6DED6),
-                        foregroundColor: Colors.brown,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                        elevation: 0,
-                      ),
-                      child: const Text("Approve Receipt"),
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: const [
+                    Expanded(
+                      flex: 4,
+                      child: Text("All Preordered Furniture:",
+                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
                     ),
-                    const SizedBox(width: 12),
-                    ElevatedButton(
-                      onPressed: () => _showDenyDialog(targetPreorderId, targetReceiptId),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFB06A6A),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                        elevation: 0,
-                      ),
-                      child: const Text("Deny Receipt"),
+                    Expanded(
+                      flex: 2,
+                      child: Text("Item Price",
+                          textAlign: TextAlign.end,
+                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
                     ),
-                    const SizedBox(width: 12),
-                    TextButton(
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                WidgetBC(flattenedCustomerItems: flattenedCustomerItems),
+                const SizedBox(height: 10),
+                const Divider(thickness: 1.0, color: Colors.black12),
+
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Total Price:",
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black54)),
+                      Text(
+                        "₱${calculatedGrandTotal.toStringAsFixed(2)}",
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 18, color: Colors.brown),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                if (currentStatus.toLowerCase() == 'pending')
+                  _isActionLoading
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: CircularProgressIndicator(color: Colors.brown),
+                          ),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            ElevatedButton(
+                              onPressed: () async {
+                                setModalState(() => _isActionLoading = true);
+                                Navigator.pop(context);
+                                await _updateStatus(targetPreorderId, 'Approved');
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFE6DED6),
+                                foregroundColor: Colors.brown,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10)),
+                                elevation: 0,
+                              ),
+                              child: const Text("Approve Receipt"),
+                            ),
+                            const SizedBox(width: 12),
+                            ElevatedButton(
+                              onPressed: () => _showDenyDialog(targetPreorderId, targetReceiptId),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFB06A6A),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10)),
+                                elevation: 0,
+                              ),
+                              child: const Text("Deny Receipt"),
+                            ),
+                            const SizedBox(width: 12),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text("Close", style: TextStyle(color: Colors.black38)),
+                            ),
+                          ],
+                        )
+                else
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
                       onPressed: () => Navigator.pop(context),
                       child: const Text("Close", style: TextStyle(color: Colors.black38)),
                     ),
-                  ],
-                )
-              else
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text("Close", style: TextStyle(color: Colors.black38)),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -628,19 +608,51 @@ class _ManageReceiptState extends State<ManageReceipt> {
                     color: Colors.brown, fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
-              TextField(
-                controller: _searchController,
-                onChanged: (value) => setState(() => query = value),
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search),
-                  hintText: "Search by Receipt ID...",
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(30)),
-                ),
+              
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (value) => setState(() => query = value),
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.search),
+                        hintText: "Search by Receipt ID...",
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(30)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Container(
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+                      ],
+                    ),
+                    child: AnimatedBuilder(
+                      animation: _refreshIconController,
+                      builder: (context, child) {
+                        return Transform.rotate(
+                          angle: _refreshIconController.value * 2 * math.pi,
+                          child: child,
+                        );
+                      },
+                      child: IconButton(
+                        icon: const Icon(Icons.refresh, color: Colors.brown),
+                        onPressed: _fetchSupabaseData,
+                        tooltip: "Refresh database data",
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 30),
+              
               Center(
                 child: Container(
                   width: double.infinity,
@@ -658,7 +670,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Tabs
                       Padding(
                         padding: const EdgeInsets.only(top: 8.0, left: 16, right: 16),
                         child: Row(
@@ -670,7 +681,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
                         ),
                       ),
 
-                      // Table header
                       Container(
                         padding: const EdgeInsets.symmetric(
                             vertical: 14, horizontal: 16),
@@ -680,18 +690,38 @@ class _ManageReceiptState extends State<ManageReceipt> {
                                   BorderSide(color: Colors.black12, width: 1.5)),
                         ),
                         child: Row(
-                          children: const [
-                            Expanded(child: HeaderText("ID")),
-                            Expanded(child: HeaderText("Date Submitted")),
-                            Expanded(child: HeaderText("Customer Email")),
-                            Expanded(child: HeaderText("Total Items")),
-                            Expanded(child: HeaderText("Status")),
-                            Expanded(child: HeaderText("Action")),
+                          children: [
+                            Expanded(
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(8),
+                                onTap: () {
+                                  setState(() {
+                                    _isAscending = !_isAscending;
+                                  });
+                                },
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const HeaderText("ID"),
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      _isAscending ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                                      size: 18,
+                                      color: Colors.brown,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const Expanded(child: HeaderText("Date Submitted")),
+                            const Expanded(child: HeaderText("Customer Email")),
+                            const Expanded(child: HeaderText("Total Items")),
+                            const Expanded(child: HeaderText("Status")),
+                            const Expanded(child: HeaderText("Action")),
                           ],
                         ),
                       ),
 
-                      // Body
                       if (_isLoading)
                         const Padding(
                           padding: EdgeInsets.all(40.0),
@@ -855,19 +885,79 @@ class _ManageReceiptState extends State<ManageReceipt> {
   }
 }
 
+class WidgetBC extends StatelessWidget {
+  const WidgetBC({
+    super.key,
+    required this.flattenedCustomerItems,
+  });
+
+  final List<Map<String, dynamic>> flattenedCustomerItems;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 200),
+      child: flattenedCustomerItems.isEmpty
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Text("No items found for this customer.",
+                  style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
+            )
+          : ListView.builder(
+              shrinkWrap: true,
+              itemCount: flattenedCustomerItems.length,
+              itemBuilder: (context, index) {
+                final item = flattenedCustomerItems[index];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        flex: 4,
+                        child: Row(
+                          children: [
+                            const Icon(Icons.lens, size: 10, color: Colors.brown),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                "${item['furniture_name']} (${item['quantity']})",
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 14, color: Colors.black87),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          "₱${item['line_total'].toStringAsFixed(2)}",
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+    );
+  }
+}
+
 class HeaderText extends StatelessWidget {
   final String text;
   const HeaderText(this.text, {super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-            fontWeight: FontWeight.bold, color: Colors.black87),
-      ),
+    return Text(
+      text,
+      textAlign: TextAlign.center,
+      style: const TextStyle(
+          fontWeight: FontWeight.bold, color: Colors.black87),
     );
   }
 }

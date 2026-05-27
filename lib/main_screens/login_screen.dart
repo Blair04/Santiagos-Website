@@ -94,7 +94,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // --- PASSWORD OVERWRITE WORKFLOW ---
   Future<void> _handleForgotPassword() async {
     final TextEditingController resetEmailController = TextEditingController();
 
@@ -138,18 +137,16 @@ class _LoginScreenState extends State<LoginScreen> {
               }
               
               try {
-                // Check if the record actually exists before prompting a reset
                 final res = await _supabase.from('ADMIN').select().eq('email', email);
                 
                 if (!dialogContext.mounted) return;
-                Navigator.pop(dialogContext); // Close email verify panel safely
+                Navigator.pop(dialogContext);
 
                 if (res.isEmpty) {
                   _showSnackBar('Admin email record not found.', Colors.redAccent);
                   return;
                 }
 
-                // Carry the validated email over to the overwrite dialog window
                 _showNewPasswordDialog(email);
               } catch (e) {
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
@@ -220,8 +217,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 }
 
                 try {
-                  // CRUCIAL CHANGE: Adding .select() guarantees that if Row Level Security (RLS)
-                  // blocks the update, it will return an empty list and trigger our warning.
                   final response = await _supabase
                       .from('ADMIN')
                       .update({'password': newPass})

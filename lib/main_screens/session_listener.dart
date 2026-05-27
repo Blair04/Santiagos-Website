@@ -44,7 +44,7 @@ class _SessionListenerState extends State<SessionListener> {
   Widget build(BuildContext context) {
     return Listener(
       behavior: HitTestBehavior.translucent,
-      onPointerDown: (_) => _startTimer(), // Reset timer on interaction
+      onPointerDown: (_) => _startTimer(), 
       onPointerMove: (_) => _startTimer(),
       child: widget.child,
     );
