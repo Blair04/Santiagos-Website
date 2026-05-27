@@ -100,7 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: const Color(0xFFF7F4F1),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: const Text(
@@ -126,7 +126,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
@@ -136,12 +136,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 _showSnackBar('Please enter your email.', Colors.orangeAccent);
                 return;
               }
-
-              Navigator.pop(context); // Close the verification email dialog Panel
               
               try {
                 // Check if the record actually exists before prompting a reset
                 final res = await _supabase.from('ADMIN').select().eq('email', email);
+                
+                if (!dialogContext.mounted) return;
+                Navigator.pop(dialogContext); // Close email verify panel safely
+
                 if (res.isEmpty) {
                   _showSnackBar('Admin email record not found.', Colors.redAccent);
                   return;
@@ -150,6 +152,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Carry the validated email over to the overwrite dialog window
                 _showNewPasswordDialog(email);
               } catch (e) {
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
                 _showSnackBar('Network communication error.', Colors.redAccent);
               }
             },
@@ -171,7 +174,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
+      builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: const Color(0xFFF7F4F1),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -191,7 +194,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: const TextStyle(fontSize: 14),
                 decoration: _inputDecoration(
                   hintText: 'Minimum 6 characters',
-                ).copyWith(
                   suffixIcon: IconButton(
                     icon: Icon(
                       isDialogPasswordVisible ? Icons.visibility : Icons.visibility_outlined,
@@ -218,11 +220,23 @@ class _LoginScreenState extends State<LoginScreen> {
                 }
 
                 try {
-                  // CRUCIAL: Targets the exact row with the matching email, updating the password cell
-                  // This fully overwrites the previous password, preventing it from working again.
-                  await _supabase.from('ADMIN').update({'password': newPass}).eq('email', email);
+                  // CRUCIAL CHANGE: Adding .select() guarantees that if Row Level Security (RLS)
+                  // blocks the update, it will return an empty list and trigger our warning.
+                  final response = await _supabase
+                      .from('ADMIN')
+                      .update({'password': newPass})
+                      .eq('email', email)
+                      .select();
                   
-                  if (context.mounted) Navigator.pop(context);
+                  if (response.isEmpty) {
+                    _showSnackBar(
+                      'Update blocked! Please disable or check your Supabase RLS Policies for this table.', 
+                      Colors.redAccent
+                    );
+                    return;
+                  }
+
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
                   _showSnackBar('Password updated successfully! Old password cleared.', Colors.green);
                 } catch (e) {
                   _showSnackBar('Failed to safely store new credentials.', Colors.redAccent);
@@ -241,12 +255,8 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _showSnackBar(
-    String message,
-    Color backgroundColor,
-  ) {
+  void _showSnackBar(String message, Color backgroundColor) {
     if (!mounted) return;
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -272,10 +282,7 @@ class _LoginScreenState extends State<LoginScreen> {
           padding: const EdgeInsets.all(20),
           child: Container(
             width: 340,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 22,
-              vertical: 24,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
             decoration: BoxDecoration(
               color: const Color(0xFFD8C9BC),
               borderRadius: BorderRadius.circular(18),
@@ -292,7 +299,6 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // santiagos logo
                 Center(
                   child: Container(
                     width: 78,
@@ -310,59 +316,33 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 28),
-
-                // email label
                 const Text(
                   'Email',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF5C4635),
-                  ),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF5C4635)),
                 ),
                 const SizedBox(height: 6),
-
-                // email field
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.black87,
-                  ),
-                  decoration: _inputDecoration(
-                    hintText: 'example@email.com',
-                  ),
+                  style: const TextStyle(fontSize: 14, color: Colors.black87),
+                  decoration: _inputDecoration(hintText: 'example@email.com'),
                 ),
                 const SizedBox(height: 18),
-
-                // label password
                 const Text(
                   'Password',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF5C4635),
-                  ),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF5C4635)),
                 ),
                 const SizedBox(height: 6),
-
-                // password field
                 TextFormField(
                   controller: _passwordController,
                   obscureText: !_isPasswordVisible,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.black87,
-                  ),
+                  style: const TextStyle(fontSize: 14, color: Colors.black87),
                   onFieldSubmitted: (_) => _isLoading ? null : _handleLogin(),
                   decoration: _inputDecoration(
                     hintText: 'Password',
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _isPasswordVisible
-                            ? Icons.visibility
-                            : Icons.visibility_outlined,
+                        _isPasswordVisible ? Icons.visibility : Icons.visibility_outlined,
                         size: 20,
                         color: Colors.grey.shade600,
                       ),
@@ -374,8 +354,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-                
-                // Forgot Password Context Button
                 const SizedBox(height: 4),
                 Align(
                   alignment: Alignment.centerRight,
@@ -398,8 +376,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // login button
                 SizedBox(
                   width: double.infinity,
                   height: 46,
@@ -409,9 +385,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       backgroundColor: const Color(0xFFE4CFB3),
                       foregroundColor: const Color(0xFF4B3525),
                       elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                     child: _isLoading
                         ? const SizedBox(
@@ -419,18 +393,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Color(0xFF4B3525),
-                              ),
+                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4B3525)),
                             ),
                           )
-                        : const Text(
-                            'Log in',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                        : const Text('Log in', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                   ),
                 ),
               ],
@@ -441,37 +407,21 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // input design
-  InputDecoration _inputDecoration({
-    required String hintText,
-    Widget? suffixIcon,
-  }) {
+  InputDecoration _inputDecoration({required String hintText, Widget? suffixIcon}) {
     return InputDecoration(
       hintText: hintText,
-      hintStyle: TextStyle(
-        color: Colors.grey.shade500,
-        fontSize: 13,
-      ),
+      hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 13),
       filled: true,
       fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 14,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       suffixIcon: suffixIcon,
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(
-          color: Colors.black.withOpacity(0.25),
-          width: 1,
-        ),
+        borderSide: BorderSide(color: Colors.black.withOpacity(0.25), width: 1),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(
-          color: Colors.black87,
-          width: 1.3,
-        ),
+        borderSide: const BorderSide(color: Colors.black87, width: 1.3),
       ),
     );
   }
