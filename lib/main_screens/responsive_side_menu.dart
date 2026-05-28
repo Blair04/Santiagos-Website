@@ -4,6 +4,7 @@ import 'package:flutter_application_1/main_screens/manage_receipt_screen.dart';
 import 'package:flutter_application_1/main_screens/preorder_screen.dart';
 import 'package:flutter_application_1/main_screens/manage_furniture.dart';
 import 'package:flutter_application_1/main_screens/login_screen.dart'; 
+import 'package:flutter_application_1/main_screens/manage_category_screen.dart';
 import 'package:flutter_application_1/main_screens/session_listener.dart'; 
 
 class MainResponsivePage extends StatefulWidget {
@@ -20,6 +21,7 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
     const ManageReceipt(),         
     const ManageFurniture(), 
     const Preorder(),  
+    const ManageCategoryScreen(),
   ];
 
   void _handleLogout({bool wasTimeout = false}) async {
@@ -108,7 +110,9 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
   Widget _getTitle() {
     if (_selectedIndex == 0) return const Text('Manage Receipts');
     if (_selectedIndex == 1) return const Text('Manage Products');
-    return const Text('Top Products');
+    if (_selectedIndex == 2) return const Text('Top Products');
+    //if (_selectedIndex == 3) return const Text('Manage Categories');
+    return const Text('Manage Categories');
   }
 }
 
@@ -209,6 +213,11 @@ class NavigationContent extends StatelessWidget {
           title: 'Top Products',
           icon: Icons.receipt_long,
           index: 2,
+        ),
+        buildNavItem(
+          title: 'Manage Categories',
+          icon: Icons.category,
+          index: 3,
         ),
         
         const Spacer(),
