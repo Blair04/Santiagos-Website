@@ -20,25 +20,20 @@ class AddFurniture extends StatefulWidget {
 class _AddFurnitureState extends State<AddFurniture> {
   final _formKey = GlobalKey<FormState>();
 
-  // Text Controllers
   final _nameController = TextEditingController();
   final _priceController = TextEditingController();
   final _descController = TextEditingController();
   final _colorController = TextEditingController();
 
-  // Media Data
   Uint8List? _imageBytes;
   Uint8List? _modelBytes;
   String? _imageName;
   String? _modelName;
   
-  // Track if we are using existing database URLs during edit mode
   String? _existingImageUrl;
   String? _existingModelUrl;
 
   bool _isUploading = false;
-  
-  // Separate Highlight States
   bool _isDraggingImage = false;
   bool _isDraggingModel = false;
   
@@ -49,7 +44,6 @@ class _AddFurnitureState extends State<AddFurniture> {
   int? _selectedCategoryId;
   int? _selectedFurnitureId;
 
-  // Helper getter to determine if the form is in edit mode
   bool get _isEditing => widget.editProduct != null;
 
   @override
@@ -101,7 +95,6 @@ class _AddFurnitureState extends State<AddFurniture> {
     }
   }
 
-  // --- PICKER LOGIC ---
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
@@ -118,7 +111,6 @@ class _AddFurnitureState extends State<AddFurniture> {
     }
   }
 
-  // --- SAVE / UPDATE LOGIC ---
   Future<void> _saveProduct() async {
     if (!_formKey.currentState!.validate() || (!_isEditing && _imageBytes == null)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please check your inputs and image.')));
@@ -146,11 +138,9 @@ class _AddFurnitureState extends State<AddFurniture> {
         }
       }
 
-      // Format name to be url/file safe: "Oak Chair 2" -> "oak_chair_2"
       final String cleanBaseName = namingReference.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]'), '_');
       final String baseFileName = '${uniqueTimestamp}_$cleanBaseName';
 
-      // 2. Handle Image assignment (upload with synchronized name)
       String imageUrl = _existingImageUrl ?? '';
       if (_imageBytes != null) {
         final String imgExt = _imageName?.split('.').last ?? 'png';
@@ -160,7 +150,6 @@ class _AddFurnitureState extends State<AddFurniture> {
         imageUrl = _supabase.storage.from('images').getPublicUrl(imageFileName);
       }
 
-      // 3. Handle 3D Model assignment (upload with synchronized name)
       String arUrl = _existingModelUrl ?? '';
       if (_modelBytes != null) {
         final String modelExt = _modelName?.split('.').last ?? 'glb';
@@ -171,7 +160,6 @@ class _AddFurnitureState extends State<AddFurniture> {
       }
 
       if (_isEditing) {
-        // --- EDIT TRANSACTION LOGIC ---
         final furnitureId = widget.editProduct!['furniture_id'];
         final variantId = widget.editProduct!['variant_id'];
 
@@ -313,7 +301,18 @@ class _AddFurnitureState extends State<AddFurniture> {
                 Row(
                   children: [
                     Expanded(
-                      child: TextFormField(controller: _priceController, keyboardType: TextInputType.number, decoration: _inputDeco('Price').copyWith(prefixText: '₱ '), validator: (v) => double.tryParse(v!) == null ? 'Invalid' : null),
+                      child: TextFormField(
+                        controller: _priceController, 
+                        keyboardType: TextInputType.number, 
+                        decoration: _inputDeco('Price').copyWith(prefixText: '₱ '), 
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return 'Required';
+                          final price = double.tryParse(v);
+                          if (price == null) return 'Invalid';
+                          if (price < 0) return 'Cannot be negative';
+                          return null;
+                        },
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -360,7 +359,6 @@ class _AddFurnitureState extends State<AddFurniture> {
     );
   }
 
-  // --- REUSED HELPERS ---
   Widget _buildFilePicker({
     required String label, 
     required IconData icon, 
