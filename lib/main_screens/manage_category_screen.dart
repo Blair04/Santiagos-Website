@@ -188,7 +188,7 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
           child: Theme(
             data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
             child: ExpansionTile(
-              leading: Container(width: 38, height: 38, decoration: BoxDecoration(color: _brown.withOpacity(0.08), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.category_rounded, color: _brownLight, size: 18)),
+              leading: Container(width: 38, height: 38, decoration: BoxDecoration(color: _brown.withOpacity(0.08), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.chair, color: _brownLight, size: 18)),
               title: Text(category.name, style: const TextStyle(color: _brown, fontSize: 15, fontWeight: FontWeight.w600)),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,

@@ -20,8 +20,8 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
   late final List<Widget> _screens = [
     const ManageReceipt(),         
     const ManageFurniture(), 
-    const Preorder(),  
     const ManageCategoryScreen(),
+    const Preorder(),  
   ];
 
   void _handleLogout({bool wasTimeout = false}) async {
@@ -110,9 +110,9 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
   Widget _getTitle() {
     if (_selectedIndex == 0) return const Text('Manage Receipts');
     if (_selectedIndex == 1) return const Text('Manage Products');
-    if (_selectedIndex == 2) return const Text('Top Products');
-    //if (_selectedIndex == 3) return const Text('Manage Categories');
-    return const Text('Manage Categories');
+    //if (_selectedIndex == 2) return const Text('Top Products');
+    if (_selectedIndex == 2) return const Text('Manage Categories');
+    return const Text('Top Products');
   }
 }
 
@@ -206,17 +206,17 @@ class NavigationContent extends StatelessWidget {
         ),
         buildNavItem(
           title: 'Manage Products',
-          icon: Icons.local_shipping,
+          icon: Icons.chair,
           index: 1,
-        ),
-        buildNavItem(
-          title: 'Top Products',
-          icon: Icons.receipt_long,
-          index: 2,
         ),
         buildNavItem(
           title: 'Manage Categories',
           icon: Icons.category,
+          index: 2,
+        ),
+        buildNavItem(
+          title: 'Top Products',
+          icon: Icons.receipt_long,
           index: 3,
         ),
         
