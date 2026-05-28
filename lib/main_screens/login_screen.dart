@@ -119,7 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
               controller: resetEmailController,
               keyboardType: TextInputType.emailAddress,
               style: const TextStyle(fontSize: 14),
-              decoration: _inputDecoration(hintText: 'example@email.com'),
+              decoration: _inputDecoration(hintText: 'example@gmail.com'),
             ),
           ],
         ),
@@ -320,7 +320,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   style: const TextStyle(fontSize: 14, color: Colors.black87),
-                  decoration: _inputDecoration(hintText: 'example@email.com'),
+                  decoration: _inputDecoration(hintText: 'example@gmail.com'),
                 ),
                 const SizedBox(height: 18),
                 const Text(
