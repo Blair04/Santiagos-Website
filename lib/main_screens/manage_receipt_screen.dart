@@ -103,7 +103,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         backgroundColor: const Color(0xFFF9F6F1),
         title: const Text(
-          "Deny Receipt",
+          "Cancellation Receipt",
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.brown),
         ),
         content: Column(
@@ -111,7 +111,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              "Please provide a reason for denying this receipt:",
+              "Please provide a reason for cancelling this receipt:",
               style: TextStyle(fontSize: 14, color: Colors.black54),
             ),
             const SizedBox(height: 12),
@@ -119,7 +119,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
               controller: messageController,
               maxLines: 3,
               decoration: InputDecoration(
-                hintText: "Enter denial reason...",
+                hintText: "Enter cancellation reason...",
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
@@ -151,7 +151,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               elevation: 0,
             ),
-            child: const Text("Confirm Deny"),
+            child: const Text("Confirm Cancellation"),
           ),
         ],
       ),
@@ -161,7 +161,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
 
     if (confirmed && mounted) {
       Navigator.pop(context);
-      await _updateStatus(preorderId, 'Denied', receiptId: receiptId, message: enteredMessage);
+      await _updateStatus(preorderId, 'Cancelled', receiptId: receiptId, message: enteredMessage);
     }
   }
 
@@ -196,7 +196,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
         return;
       }
 
-      if (newStatus == 'Denied' && receiptId != null) {
+      if (newStatus == 'Cancelled' && receiptId != null) {
         debugPrint("📝 Writing message to RECEIPT receipt_id=$receiptId: '$message'");
 
         final updatedReceipt = await _supabase
@@ -230,11 +230,11 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              newStatus == 'Denied'
-                  ? "Receipt denied${message != null && message.isNotEmpty ? ': $message' : '.'}"
+              newStatus == 'Cancelled'
+                  ? "Receipt cancelled${message != null && message.isNotEmpty ? ': $message' : '.'}"
                   : "Receipt marked as $newStatus",
             ),
-            backgroundColor: newStatus.toLowerCase() == 'approved'
+            backgroundColor: newStatus.toLowerCase() == 'completed'
                 ? Colors.green
                 : Colors.redAccent,
           ),
@@ -278,10 +278,10 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
       return 'There are no receipts matching "$query" under $selectedTab';
     }
     switch (selectedTab.toLowerCase()) {
-      case 'approved':
-        return 'There are no "approved" receipts';
-      case 'denied':
-        return 'There are no "denied" receipts';
+      case 'completed':
+        return 'There are no "completed" receipts';
+      case 'cancelled':
+        return 'There are no "cancelled" receipts';
       default:
         return 'There are no "pending" receipts';
     }
@@ -381,7 +381,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                 ),
                 const Divider(height: 30, thickness: 1.2),
 
-                if (currentStatus.toLowerCase() == 'denied' &&
+                if (currentStatus.toLowerCase() == 'cancelled' &&
                     denialMessage != null &&
                     denialMessage.isNotEmpty) ...[
                   Container(
@@ -478,7 +478,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                               onPressed: () async {
                                 setModalState(() => _isActionLoading = true);
                                 Navigator.pop(context);
-                                await _updateStatus(targetPreorderId, 'Approved');
+                                await _updateStatus(targetPreorderId, 'Completed');
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFFE6DED6),
@@ -487,7 +487,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                                     borderRadius: BorderRadius.circular(10)),
                                 elevation: 0,
                               ),
-                              child: const Text("Approve Receipt"),
+                              child: const Text("Payed Receipt"),
                             ),
                             const SizedBox(width: 12),
                             ElevatedButton(
@@ -499,7 +499,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                                     borderRadius: BorderRadius.circular(10)),
                                 elevation: 0,
                               ),
-                              child: const Text("Deny Receipt"),
+                              child: const Text("Cancel Receipt"),
                             ),
                             const SizedBox(width: 12),
                             TextButton(
@@ -675,8 +675,8 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                         child: Row(
                           children: [
                             _buildChromeTab('Pending'),
-                            _buildChromeTab('Approved'),
-                            _buildChromeTab('Denied'),
+                            _buildChromeTab('Completed'),
+                            _buildChromeTab('Cancelled'),
                           ],
                         ),
                       ),
@@ -830,7 +830,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                 decoration: BoxDecoration(
                   color: status.toLowerCase() == 'pending'
                       ? const Color(0xFFEBE3D5)
-                      : status.toLowerCase() == 'approved'
+                      : status.toLowerCase() == 'completed'
                           ? Colors.green.shade100
                           : Colors.red.shade100,
                   borderRadius: BorderRadius.circular(20),
@@ -841,7 +841,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                     fontSize: 12,
                     color: status.toLowerCase() == 'pending'
                         ? Colors.black87
-                        : status.toLowerCase() == 'approved'
+                        : status.toLowerCase() == 'completed'
                             ? Colors.green.shade800
                             : Colors.red.shade800,
                   ),

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart'; 
+import 'package:flutter_application_1/main_screens/dashboard_screen.dart';
 import 'package:flutter_application_1/main_screens/manage_receipt_screen.dart';
-import 'package:flutter_application_1/main_screens/preorder_screen.dart';
+import 'package:flutter_application_1/main_screens/products_sales_screen.dart';
 import 'package:flutter_application_1/main_screens/manage_furniture.dart';
 import 'package:flutter_application_1/main_screens/login_screen.dart'; 
 import 'package:flutter_application_1/main_screens/manage_category_screen.dart';
@@ -18,10 +19,11 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
   int _selectedIndex = 0;
 
   late final List<Widget> _screens = [
+    const DashboardScreen(),
     const ManageReceipt(),         
     const ManageFurniture(), 
     const ManageCategoryScreen(),
-    const Preorder(),  
+    const ProductsSalesScreen(),  
   ];
 
   void _handleLogout({bool wasTimeout = false}) async {
@@ -108,11 +110,11 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
   }
 
   Widget _getTitle() {
-    if (_selectedIndex == 0) return const Text('Manage Receipts');
-    if (_selectedIndex == 1) return const Text('Manage Products');
-    //if (_selectedIndex == 2) return const Text('Top Products');
-    if (_selectedIndex == 2) return const Text('Manage Categories');
-    return const Text('Top Products');
+    if (_selectedIndex == 0) return const Text('Dashboard');
+    if (_selectedIndex == 1) return const Text('Manage Receipts');
+    if (_selectedIndex == 2) return const Text('Manage Products');
+    if (_selectedIndex == 3) return const Text('Manage Categories');
+    return const Text('Product Sales');
   }
 }
 
@@ -200,31 +202,36 @@ class NavigationContent extends StatelessWidget {
         ),
         
         buildNavItem(
+          title: 'Dashboard',
+          icon: Icons.dashboard,
+          index: 0,
+        ),
+        buildNavItem(
           title: 'Manage Receipts',
           icon: Icons.receipt,
-          index: 0,
+          index: 1,
         ),
         buildNavItem(
           title: 'Manage Products',
           icon: Icons.chair,
-          index: 1,
+          index: 2,
         ),
         buildNavItem(
           title: 'Manage Categories',
           icon: Icons.category,
-          index: 2,
+          index: 3,
         ),
         buildNavItem(
-          title: 'Top Products',
+          title: 'Product Sales',
           icon: Icons.receipt_long,
-          index: 3,
+          index: 4,
         ),
         
         const Spacer(),
         const Divider(),
 
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
             child: GestureDetector(
