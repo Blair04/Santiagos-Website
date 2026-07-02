@@ -5,7 +5,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 
-
 final _supabase = Supabase.instance.client;
 
 class AddFurniture extends StatefulWidget {
@@ -24,6 +23,7 @@ class _AddFurnitureState extends State<AddFurniture> {
   final _priceController = TextEditingController();
   final _descController = TextEditingController();
   final _colorController = TextEditingController();
+  final _stockController = TextEditingController(); // Stock Controller
 
   Uint8List? _imageBytes;
   Uint8List? _modelBytes;
@@ -59,6 +59,7 @@ class _AddFurnitureState extends State<AddFurniture> {
       _nameController.text = p['furniture_name'] ?? '';
       _priceController.text = p['price']?.toString() ?? '';
       _descController.text = p['description'] ?? '';
+      _stockController.text = p['stock']?.toString() ?? '0'; // Load existing stock
       _colorController.text = p['color'] ?? '';
       _selectedCategoryId = p['category_id'];
       _existingImageUrl = p['image_url'];
@@ -72,13 +73,14 @@ class _AddFurnitureState extends State<AddFurniture> {
     _priceController.dispose();
     _descController.dispose();
     _colorController.dispose();
+    _stockController.dispose(); // Safely dispose controller
     super.dispose();
   }
 
   Future<void> _loadInitialData() async {
     try {
       final catRes = await _supabase.from('CATEGORY').select('category_id, category_name').order('category_name');
-      final furnRes = await _supabase.from('FURNITURE').select('furniture_id, furniture_name').order('furniture_name');
+      final furnRes = await _supabase.from('FURNITURE').select('furniture_id, furniture_name, stock').order('furniture_name');
 
       if (mounted) {
         setState(() {
@@ -91,7 +93,7 @@ class _AddFurnitureState extends State<AddFurniture> {
         });
       }
     } catch (e) {
-      debugPrint('Error loading data: $e');
+      debugPrint('Error loading initial data: $e');
     }
   }
 
@@ -113,7 +115,7 @@ class _AddFurnitureState extends State<AddFurniture> {
 
   Future<void> _saveProduct() async {
     if (!_formKey.currentState!.validate() || (!_isEditing && _imageBytes == null)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please check your inputs and image.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please check your inputs and selected image.')));
       return;
     }
 
@@ -123,14 +125,16 @@ class _AddFurnitureState extends State<AddFurniture> {
     }
 
     setState(() => _isUploading = true);
-    showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.brown)));
+    showDialog(
+      context: context, 
+      barrierDismissible: false, 
+      builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.brown)),
+    );
 
     try {
-      // 1. Generate a Single Shared Base Structure for Filenames
       final String uniqueTimestamp = DateTime.now().millisecondsSinceEpoch.toString();
       String namingReference = _nameController.text.trim();
 
-      // If linking to existing product, grab its name from our loaded list to use for file naming
       if (!_isEditing && _linkToExisting && _selectedFurnitureId != null) {
         final match = _existingFurniture.firstWhere((f) => f['furniture_id'] == _selectedFurnitureId, orElse: () => {});
         if (match.isNotEmpty) {
@@ -163,10 +167,12 @@ class _AddFurnitureState extends State<AddFurniture> {
         final furnitureId = widget.editProduct!['furniture_id'];
         final variantId = widget.editProduct!['variant_id'];
 
+        // Updates data including the matching "stock" column inside database structure
         await _supabase.from('FURNITURE').update({
           'furniture_name': _nameController.text.trim(),
           'description': _descController.text.trim(),
           'price': double.parse(_priceController.text.trim()),
+          'stock': int.parse(_stockController.text.trim()), // Updates Stock on Edit
           'category_id': _selectedCategoryId,
         }).eq('furniture_id', furnitureId);
 
@@ -177,13 +183,14 @@ class _AddFurnitureState extends State<AddFurniture> {
         }).eq('variant_id', variantId);
 
       } else {
-        // --- ORIGINAL ADD LOGIC ---
         int targetFurnitureId;
 
         if (!_linkToExisting) { 
+          // Inserts data including custom defined initialization value for stock parameter 
           final res = await _supabase.from('FURNITURE').insert({
             'furniture_name': _nameController.text.trim(),
             'description': _descController.text.trim(),
+            'stock': int.parse(_stockController.text.trim()), // Saves Stock on New Product Creation
             'price': double.parse(_priceController.text.trim()),
             'category_id': _selectedCategoryId,
           }).select('furniture_id').single();
@@ -205,12 +212,12 @@ class _AddFurnitureState extends State<AddFurniture> {
         Navigator.pop(context); 
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(_isEditing ? 'Product successfully updated!' : 'Product successfully saved!'), 
-          backgroundColor: Colors.green
+          backgroundColor: Colors.green,
         ));
       }
     } catch (e) {
       if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
@@ -328,7 +335,41 @@ class _AddFurnitureState extends State<AddFurniture> {
               ],
 
               const SizedBox(height: 12),
-              TextFormField(controller: _colorController, decoration: _inputDeco('Variant/Color (e.g. Natural Oak)'), validator: (v) => v!.isEmpty ? 'Required' : null),
+              
+              // Structured row matching Price/Category block for Variant Color and Stock parameters
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      controller: _colorController, 
+                      decoration: _inputDeco('Variant/Color (e.g. Natural Oak)'), 
+                      validator: (v) => v!.isEmpty ? 'Required' : null
+                    ),
+                  ),
+                  
+                  // Only display Stock Input field if editing or creating a completely new catalog line item
+                  if (_isEditing || !_linkToExisting) ...[
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 1,
+                      child: TextFormField(
+                        controller: _stockController,
+                        keyboardType: TextInputType.number,
+                        decoration: _inputDeco('Stock Qty'),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return 'Required';
+                          final stock = int.tryParse(v);
+                          if (stock == null) return 'Invalid integer';
+                          if (stock < 0) return 'Cannot be negative';
+                          return null;
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              
               const SizedBox(height: 12),
               if (_isEditing || !_linkToExisting) TextFormField(controller: _descController, maxLines: 2, decoration: _inputDeco('Description')),
               
@@ -371,9 +412,7 @@ class _AddFurnitureState extends State<AddFurniture> {
     required VoidCallback onDragExited,
     required Function(Uint8List, String) onFileDropped
   }) {
-    
-    final hasAsset = bytes != null || 
-        (networkUrl != null && networkUrl.isNotEmpty && networkUrl.startsWith('http'));
+    final hasAsset = bytes != null || (networkUrl != null && networkUrl.isNotEmpty && networkUrl.startsWith('http'));
 
     return Expanded(
       child: DropTarget(

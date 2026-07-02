@@ -44,7 +44,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
   Future<void> _loadProducts() async {
     try {
       final response = await _supabase.from('FURNITURE').select('''
-        furniture_id, furniture_name, description, price, created_at, category_id,
+        furniture_id, furniture_name, description, stock, price, created_at, category_id,
         CATEGORY ( category_name ),
         VARIANT ( variant_id, color, image_url, ar_model_url )
       ''').order('created_at', ascending: false);
@@ -68,6 +68,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
         'furniture_id': item['furniture_id'],
         'furniture_name': item['furniture_name'],
         'description': item['description'],
+        'stock': item['stock'],
         'price': item['price'],
         'created_at': item['created_at'],
         'category_id': item['category_id'],
@@ -111,6 +112,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
         'furniture_id': item['furniture_id'],
         'furniture_name': item['furniture_name'],
         'description': item['description'],
+        'stock': item['stock'],
         'price': item['price'],
         'created_at': item['created_at'],
         'category_id': item['category_id'],
@@ -152,7 +154,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
     String archiveQuery = "";
     try {
       final response = await _supabase.from('FURNITURE_ARCHIVE').select('''
-        furniture_id, furniture_name, description, price, created_at, category_id,
+        furniture_id, furniture_name, description, stock, price, created_at, category_id,
         VARIANT:VARIANT_ARCHIVE ( variant_id, color, image_url )
       ''').order('furniture_name', ascending: true);
 
@@ -225,6 +227,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                                         : const Icon(Icons.chair, color: Colors.grey))),
                                     _dataItem(item['furniture_name']?.toString() ?? '', flex: 2),
                                     _dataItem("₱ ${_formatPrice(item['price'])}"),
+                                    _dataItem(item['stock']?.toString() ?? 'N/A'),
                                     Expanded(child: Center(child: OutlinedButton.icon(
                                       onPressed: () => _unarchiveProduct(item),
                                       style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)), side: BorderSide(color: Colors.brown.shade300)),
@@ -264,7 +267,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
       context: context, isScrollControlled: true, backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) => AddFurniture(editProduct: {
-        'furniture_id': item['furniture_id'], 'furniture_name': item['furniture_name'], 'price': item['price'],
+        'furniture_id': item['furniture_id'], 'furniture_name': item['furniture_name'], 'stock': item['stock'], 'price': item['price'],
         'description': item['description'], 'category_id': item['category_id'], 'variant_id': currentVariant['variant_id'],
         'color': currentVariant['color'], 'image_url': currentVariant['image_url'], 'ar_model_url': currentVariant['ar_model_url'],
       }),
@@ -363,7 +366,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                         children: [
                           _headerItem('Image'), _headerItem('Product Name', flex: 2), _headerItem('Price'),
                           _headerItem('Category', flex: 2), _headerItem('Color/Variant', flex:2), _headerItem('Description', flex: 3),
-                          _headerItem('Edit'), _headerItem('Archive'),
+                          _headerItem('Stock'), _headerItem('Edit'), _headerItem('Archive'),
                         ],
                       ),
                     ),
@@ -411,6 +414,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                                                     )
                                                   : _dataItem(currentSelection)),
                                               _dataItem(item['description']?.toString() ?? 'No Description', flex: 3),
+                                              _dataItem(item['stock']?.toString() ?? 'N/A'),
                                               Expanded(child: Center(child: IconButton(icon: const Icon(Icons.edit_note, color: Colors.brown), onPressed: () => _openEditProductSheet(context, item, currentVariant)))),
                                               Expanded(child: Center(child: IconButton(icon: const Icon(Icons.archive, color: Colors.brown), onPressed: () => _archiveProduct(item)))),
                                             ],
