@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-// --- DATABASE MAPPED MODEL LAYER MOCKS ---
-// These model blueprints match your ERD tables perfectly.
 class PreorderSummary {
   final int pendingCount;
   final int completedCount;
@@ -23,7 +21,6 @@ class TopSaleItem {
 }
 
 class DashboardScreen extends StatelessWidget {
-  // Pass these live from your Riverpod, Provider, or Bloc state handling layer
   final PreorderSummary preorderStats;
   final int totalFurnitureCount;
   final List<String> dynamicCategories;
@@ -33,8 +30,8 @@ class DashboardScreen extends StatelessWidget {
   DashboardScreen({
     super.key,
     PreorderSummary? preorderStats,
-    this.totalFurnitureCount = 148, // Dynamic value from SELECT COUNT(*) FROM furniture
-    this.dynamicCategories = const ["Bed", "Cabinet", "Chair", "Sofa", "Table"], // SELECT category_name FROM category
+    this.totalFurnitureCount = 148, 
+    this.dynamicCategories = const ["Bed", "Cabinet", "Chair", "Sofa", "Table"],
     List<TopSaleItem>? topSales,
     List<FurnitureStockAlert>? stockAlerts,
   })  : preorderStats = preorderStats ?? PreorderSummary(pendingCount: 4, completedCount: 5, cancelledCount: 3),
@@ -55,7 +52,7 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF9F6F0), // Premium minimalist soft canvas warm cream
+      backgroundColor: const Color(0xFFF9F6F0),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(40.0),
         child: Column(
@@ -82,7 +79,6 @@ class DashboardScreen extends StatelessWidget {
             ),
             const SizedBox(height: 36),
 
-            // Top Summary Analytics Grid
             LayoutBuilder(
               builder: (context, constraints) {
                 return Row(
@@ -93,7 +89,7 @@ class DashboardScreen extends StatelessWidget {
                         value: "${preorderStats.pendingCount} Pending",
                         subtext: "${preorderStats.completedCount} Completed  •  ${preorderStats.cancelledCount} Cancelled",
                         icon: Icons.receipt_long_rounded,
-                        accentColor: const Color(0xFFC68B59), // Elegant Amber/Bronze
+                        accentColor: const Color(0xFFC68B59),
                       ),
                     ),
                     const SizedBox(width: 24),
@@ -103,7 +99,7 @@ class DashboardScreen extends StatelessWidget {
                         value: "$totalFurnitureCount Products",
                         subtext: "Live stock configurations in variant options",
                         icon: Icons.chair_rounded,
-                        accentColor: const Color(0xFF4A7A96), // Premium Slate Blue
+                        accentColor: const Color(0xFF4A7A96),
                       ),
                     ),
                     const SizedBox(width: 24),
@@ -113,7 +109,7 @@ class DashboardScreen extends StatelessWidget {
                         value: "${dynamicCategories.length} Categories",
                         subtext: dynamicCategories.join(', '),
                         icon: Icons.dashboard_customize_rounded,
-                        accentColor: const Color(0xFF438A5E), // Organic Sage Green
+                        accentColor: const Color(0xFF438A5E),
                       ),
                     ),
                   ],
@@ -123,11 +119,9 @@ class DashboardScreen extends StatelessWidget {
             
             const SizedBox(height: 40),
 
-            // Split Dashboard Content Row Layout
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top Product Sales Tracker
                 Expanded(
                   flex: 3,
                   child: _buildContentSectionContainer(
@@ -147,7 +141,6 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(width: 24),
 
-                // Stock Alert Snapshot Panel
                 Expanded(
                   flex: 2,
                   child: _buildContentSectionContainer(
@@ -170,7 +163,6 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  // Enhanced Summary UI Cards
   Widget _buildSummaryCard({
     required String title,
     required String value,
@@ -224,7 +216,6 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  // Structural Container Panels
   Widget _buildContentSectionContainer({required String title, required Widget child}) {
     return Container(
       padding: const EdgeInsets.all(28),
@@ -305,19 +296,18 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  // Status-Color Calibrated Inventory Level Indicators
   Widget _buildStockAlertItem(String productName, int count) {
     Color statusColor;
     String statusLabel;
 
     if (count <= 2) {
-      statusColor = const Color(0xFFD9534F); // Soft Red for Critically Low
+      statusColor = const Color(0xFFD9534F);
       statusLabel = "Critical Stock";
     } else if (count <= 5) {
-      statusColor = const Color(0xFFF0AD4E); // Soft Orange Warning
+      statusColor = const Color(0xFFF0AD4E);
       statusLabel = "Low Stock";
     } else {
-      statusColor = const Color(0xFF5CB85C); // Green for Safe Stable
+      statusColor = const Color(0xFF5CB85C);
       statusLabel = "Healthy";
     }
 
