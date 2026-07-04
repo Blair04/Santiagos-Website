@@ -23,7 +23,7 @@ class _AddFurnitureState extends State<AddFurniture> {
   final _priceController = TextEditingController();
   final _descController = TextEditingController();
   final _colorController = TextEditingController();
-  final _stockController = TextEditingController(); // Stock Controller
+  final _stockController = TextEditingController();
 
   Uint8List? _imageBytes;
   Uint8List? _modelBytes;
@@ -59,7 +59,7 @@ class _AddFurnitureState extends State<AddFurniture> {
       _nameController.text = p['furniture_name'] ?? '';
       _priceController.text = p['price']?.toString() ?? '';
       _descController.text = p['description'] ?? '';
-      _stockController.text = p['stock']?.toString() ?? '0'; // Load existing stock
+      _stockController.text = p['stock']?.toString() ?? '0';
       _colorController.text = p['color'] ?? '';
       _selectedCategoryId = p['category_id'];
       _existingImageUrl = p['image_url'];
@@ -73,7 +73,7 @@ class _AddFurnitureState extends State<AddFurniture> {
     _priceController.dispose();
     _descController.dispose();
     _colorController.dispose();
-    _stockController.dispose(); // Safely dispose controller
+    _stockController.dispose();
     super.dispose();
   }
 
@@ -167,12 +167,12 @@ class _AddFurnitureState extends State<AddFurniture> {
         final furnitureId = widget.editProduct!['furniture_id'];
         final variantId = widget.editProduct!['variant_id'];
 
-        // Updates data including the matching "stock" column inside database structure
+        
         await _supabase.from('FURNITURE').update({
           'furniture_name': _nameController.text.trim(),
           'description': _descController.text.trim(),
           'price': double.parse(_priceController.text.trim()),
-          'stock': int.parse(_stockController.text.trim()), // Updates Stock on Edit
+          'stock': int.parse(_stockController.text.trim()), 
           'category_id': _selectedCategoryId,
         }).eq('furniture_id', furnitureId);
 
@@ -186,11 +186,10 @@ class _AddFurnitureState extends State<AddFurniture> {
         int targetFurnitureId;
 
         if (!_linkToExisting) { 
-          // Inserts data including custom defined initialization value for stock parameter 
           final res = await _supabase.from('FURNITURE').insert({
             'furniture_name': _nameController.text.trim(),
             'description': _descController.text.trim(),
-            'stock': int.parse(_stockController.text.trim()), // Saves Stock on New Product Creation
+            'stock': int.parse(_stockController.text.trim()), 
             'price': double.parse(_priceController.text.trim()),
             'category_id': _selectedCategoryId,
           }).select('furniture_id').single();
@@ -336,7 +335,6 @@ class _AddFurnitureState extends State<AddFurniture> {
 
               const SizedBox(height: 12),
               
-              // Structured row matching Price/Category block for Variant Color and Stock parameters
               Row(
                 children: [
                   Expanded(
@@ -348,7 +346,6 @@ class _AddFurnitureState extends State<AddFurniture> {
                     ),
                   ),
                   
-                  // Only display Stock Input field if editing or creating a completely new catalog line item
                   if (_isEditing || !_linkToExisting) ...[
                     const SizedBox(width: 12),
                     Expanded(
@@ -361,7 +358,7 @@ class _AddFurnitureState extends State<AddFurniture> {
                           if (v == null || v.isEmpty) return 'Required';
                           final stock = int.tryParse(v);
                           if (stock == null) return 'Invalid integer';
-                          if (stock < 0) return 'Cannot be negative';
+                          if (stock <= 0) return 'Cannot be negative or zero';
                           return null;
                         },
                       ),
