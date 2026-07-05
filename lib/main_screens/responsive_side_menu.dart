@@ -19,11 +19,11 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
   int _selectedIndex = 0;
 
   late final List<Widget> _screens = [
-    const DashboardScreen(),
-    const ManageReceipt(),         
-    const ManageFurniture(), 
-    const ManageCategoryScreen(),
-    const ProductsSalesScreen(),  
+    DashboardScreen(),
+    ManageReceipt(),
+    ManageFurniture(),
+    ManageCategoryScreen(),
+    ProductsSalesScreen(),
   ];
 
   void _handleLogout({bool wasTimeout = false}) async {

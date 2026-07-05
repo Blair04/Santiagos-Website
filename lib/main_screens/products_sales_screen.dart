@@ -1,111 +1,244 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-class ProductsSalesScreen extends StatelessWidget {
+class ProductsSalesScreen extends StatefulWidget {
   const ProductsSalesScreen({super.key});
 
   @override
+  State<ProductsSalesScreen> createState() => _ProductsSalesScreenState();
+}
+
+class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
+  late Future<List<Map<String, dynamic>>> _salesDataFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _salesDataFuture = fetchCompletedPreorders();
+  }
+
+  Future<List<Map<String, dynamic>>> fetchCompletedPreorders() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('PREORDER_ITEMS')
+          .select('''
+            quantity,
+            item_total_price,
+            VARIANT (
+              FURNITURE (
+                furniture_name
+              )
+            ),
+            PREORDER!inner (
+              status
+            )
+          ''')
+          .eq('PREORDER.status', 'completed');
+
+      final List<dynamic> data = response as List<dynamic>;
+
+      return data.map((item) {
+        final variant = item['VARIANT'] as Map<String, dynamic>? ?? {};
+        final furniture = variant['FURNITURE'] as Map<String, dynamic>? ?? {};
+
+        return {
+          "furniture_name": furniture['furniture_name'] ?? 'Unknown Item',
+          "quantity": item['quantity'] ?? 0,
+          "item_total_price": (item['item_total_price'] as num?)?.toDouble() ?? 0.0,
+        };
+      }).toList();
+    } catch (e) {
+      throw Exception("Failed to fetch database records: $e");
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Sample configuration matching your dynamic store pricing
-    final List<Map<String, dynamic>> salesData = [
-      {"name": "Bed Gray", "qty": 4, "price": 25000.00},
-      {"name": "L-Shape Leather Sofa", "qty": 3, "price": 30000.00},
-      {"name": "Cushioned Chair", "qty": 3, "price": 1999.00},
-      {"name": "Wooden Table", "qty": 2, "price": 8500.00},
-      {"name": "Wooden Cabinet", "qty": 2, "price": 2999.00},
-    ];
-
-    // Calculate total layout summary income dynamically
-    final double totalIncome = salesData.fold(0, (sum, item) => sum + (item['qty'] * item['price']));
-
     return Scaffold(
       backgroundColor: const Color(0xFFFBF8F5),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(36.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header Title
-            const Text(
-              "Product Sales",
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF4A3E3D),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _salesDataFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFF4A3E3D)),
+            );
+          } 
+          
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Text(
+                  "${snapshot.error}",
+                  style: const TextStyle(color: Colors.red, fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
               ),
-            ),
-            const Text(
-              "Track your furniture transaction volumes and total revenue streams.",
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-            const SizedBox(height: 24),
+            );
+          } 
 
-            // Top Gross Revenue Banner Container
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE3D5CA), // Warm theme primary background
-                borderRadius: BorderRadius.circular(16),
+          // Enhanced Beautiful Empty State Interface
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE3D5CA).withOpacity(0.4),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.receipt_long_rounded,
+                        size: 64,
+                        color: Color(0xFF7D6E6A),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      "No Sales Records Yet",
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF4A3E3D),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      "Completed preorder transactions, total volumes, and generated revenue streams will appear here once orders are processed.",
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey,
+                        height: 1.4,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 32),
+                    TextButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _salesDataFuture = fetchCompletedPreorders();
+                        });
+                      },
+                      icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+                      label: const Text(
+                        "Check for Updates",
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          color: Colors.white,
+                        ),
+                      ),
+                      style: TextButton.styleFrom(
+                        backgroundColor: const Color(0xFF4A3E3D),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Total Gross Income Generated",
-                    style: TextStyle(fontSize: 14, color: Color(0xFF5C4E4B), fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "₱ ${totalIncome.toStringAsFixed(2)}",
-                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF4A3E3D)),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 32),
+            );
+          }
 
-            // Elegant Main Data Table Sheet
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.02),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+          final List<Map<String, dynamic>> salesData = snapshot.data!;
+
+          final double totalIncome = salesData.fold(
+            0.0, 
+            (sum, item) => sum + (item['item_total_price'] as double),
+          );
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(36.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Product Sales",
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF4A3E3D),
                   ),
-                ],
-              ),
-              child: Table(
-                columnWidths: const {
-                  0: FlexColumnWidth(3), // Furniture Title Column
-                  1: FlexColumnWidth(1), // Quantity Count
-                  2: FlexColumnWidth(2), // Total calculated income
-                },
-                children: [
-                  // Structured Table Column Labels
-                  _buildTableHeaderRow(["Furniture Name", "Quantity Sold", "Total Income"]),
-                  
-                  // Generating dynamic presentation table rows
-                  ...salesData.map((item) {
-                    double income = item['qty'] * item['price'];
-                    return _buildTableRow([
-                      item['name'].toString(),
-                      "${item['qty']} units",
-                      "₱ ${income.toStringAsFixed(2)}"
-                    ]);
-                  }),
-                ],
-              ),
+                ),
+                const Text(
+                  "Track your completed preorder transaction volumes and total revenue streams.",
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                const SizedBox(height: 24),
+
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE3D5CA), 
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Total Gross Income Generated (Completed)",
+                        style: TextStyle(fontSize: 14, color: Color(0xFF5C4E4B), fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "₱ ${totalIncome.toStringAsFixed(2)}",
+                        style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF4A3E3D)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.02),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Table(
+                    columnWidths: const {
+                      0: FlexColumnWidth(3), 
+                      1: FlexColumnWidth(1), 
+                      2: FlexColumnWidth(2), 
+                    },
+                    children: [
+                      _buildTableHeaderRow(["Furniture Name", "Quantity Sold", "Total Income"]),
+                      
+                      ...salesData.map((item) {
+                        return _buildTableRow([
+                          item['furniture_name'].toString(),
+                          "${item['quantity']} units",
+                          "₱ ${(item['item_total_price'] as double).toStringAsFixed(2)}"
+                        ]);
+                      }),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
-  // Header Element Line Stylist
   TableRow _buildTableHeaderRow(List<String> headers) {
     return TableRow(
       decoration: const BoxDecoration(
@@ -125,7 +258,6 @@ class ProductsSalesScreen extends StatelessWidget {
     );
   }
 
-  // Row Generator Injection Function
   TableRow _buildTableRow(List<String> data) {
     return TableRow(
       decoration: const BoxDecoration(
