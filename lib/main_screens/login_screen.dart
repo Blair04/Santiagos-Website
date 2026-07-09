@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_application_1/main_screens/responsive_side_menu.dart';
+import 'register_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,6 +16,12 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isPasswordVisible = false;
   bool _isLoading = false;
 
+  // Whether a manager account has already been registered.
+  // Starts as `true` (hide register link) until we've confirmed otherwise,
+  // so the button doesn't flash on-screen while loading.
+  bool _managerExists = true;
+  bool _checkingManager = true;
+
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
@@ -23,13 +31,17 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _checkSavedSession();
+    _checkManagerExists();
   }
 
   Future<void> _checkSavedSession() async {
     final prefs = await SharedPreferences.getInstance();
     final bool isAdminLoggedIn = prefs.getBool('isAdminLoggedIn') ?? false;
 
-    if (isAdminLoggedIn && mounted) {
+    // Also confirm Supabase still thinks we have a valid session.
+    final session = _supabase.auth.currentSession;
+
+    if (isAdminLoggedIn && session != null && mounted) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -39,15 +51,41 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// Checks the lightweight `app_state` table to see whether a manager
+  /// has already registered. This table has a single row and is safe to
+  /// read anonymously (it stores a boolean, no personal data).
+  Future<void> _checkManagerExists() async {
+    try {
+      final result = await _supabase
+          .from('app_state')
+          .select('manager_registered')
+          .eq('id', 1)
+          .maybeSingle();
+
+      if (mounted) {
+        setState(() {
+          _managerExists = (result?['manager_registered'] as bool?) ?? false;
+          _checkingManager = false;
+        });
+      }
+    } catch (_) {
+      // If the check fails (e.g. table not created yet), default to
+      // allowing registration so the manager isn't locked out.
+      if (mounted) {
+        setState(() {
+          _managerExists = false;
+          _checkingManager = false;
+        });
+      }
+    }
+  }
+
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      _showSnackBar(
-        'Please fill in all fields',
-        Colors.orangeAccent,
-      );
+      _showSnackBar('Please fill in all fields', Colors.orangeAccent);
       return;
     }
 
@@ -56,13 +94,12 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final List<dynamic> adminCheck = await _supabase
-          .from('ADMIN')
-          .select()
-          .eq('email', email)
-          .eq('password', password);
+      final response = await _supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
 
-      if (adminCheck.isNotEmpty) {
+      if (response.session != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('isAdminLoggedIn', true);
 
@@ -75,11 +112,10 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       } else {
-        _showSnackBar(
-          'Invalid admin email or password.',
-          Colors.redAccent,
-        );
+        _showSnackBar('Invalid email or password.', Colors.redAccent);
       }
+    } on AuthException catch (error) {
+      _showSnackBar(error.message, Colors.redAccent);
     } catch (error) {
       _showSnackBar(
         'An unexpected error occurred. Please check your connection.',
@@ -92,162 +128,6 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
-  }
-
-  Future<void> _handleForgotPassword() async {
-    final TextEditingController resetEmailController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFFF7F4F1),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: const Text(
-          'Reset Admin Password', 
-          style: TextStyle(color: Color(0xFF5C4635), fontWeight: FontWeight.bold)
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Enter your registered admin email address to verify your account identity.',
-              style: TextStyle(fontSize: 13, color: Colors.black87),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: resetEmailController,
-              keyboardType: TextInputType.emailAddress,
-              style: const TextStyle(fontSize: 14),
-              decoration: _inputDecoration(hintText: 'example@gmail.com'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final email = resetEmailController.text.trim();
-              if (email.isEmpty) {
-                _showSnackBar('Please enter your email.', Colors.orangeAccent);
-                return;
-              }
-              
-              try {
-                final res = await _supabase.from('ADMIN').select().eq('email', email);
-                
-                if (!dialogContext.mounted) return;
-                Navigator.pop(dialogContext);
-
-                if (res.isEmpty) {
-                  _showSnackBar('Admin email record not found.', Colors.redAccent);
-                  return;
-                }
-
-                _showNewPasswordDialog(email);
-              } catch (e) {
-                if (dialogContext.mounted) Navigator.pop(dialogContext);
-                _showSnackBar('Network communication error.', Colors.redAccent);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFE4CFB3),
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
-            ),
-            child: const Text('Verify', style: TextStyle(color: Color(0xFF4B3525), fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showNewPasswordDialog(String email) {
-    final TextEditingController newPasswordController = TextEditingController();
-    bool isDialogPasswordVisible = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFFF7F4F1),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          title: const Text(
-            'Create New Password', 
-            style: TextStyle(color: Color(0xFF5C4635), fontWeight: FontWeight.bold)
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Resetting credentials for: $email', style: const TextStyle(fontSize: 12, color: Colors.black54)),
-              const SizedBox(height: 12),
-              TextField(
-                controller: newPasswordController,
-                obscureText: !isDialogPasswordVisible,
-                style: const TextStyle(fontSize: 14),
-                decoration: _inputDecoration(
-                  hintText: 'Minimum 6 characters',
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      isDialogPasswordVisible ? Icons.visibility : Icons.visibility_outlined,
-                      size: 20,
-                      color: Colors.grey.shade600,
-                    ),
-                    onPressed: () {
-                      setDialogState(() {
-                        isDialogPasswordVisible = !isDialogPasswordVisible;
-                      });
-                    },
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () async {
-                final newPass = newPasswordController.text.trim();
-                if (newPass.length < 6) {
-                  _showSnackBar('Password validation failed: Too short.', Colors.orangeAccent);
-                  return;
-                }
-
-                try {
-                  final response = await _supabase
-                      .from('ADMIN')
-                      .update({'password': newPass})
-                      .eq('email', email)
-                      .select();
-                  
-                  if (response.isEmpty) {
-                    _showSnackBar(
-                      'Update blocked! Please disable or check your Supabase RLS Policies for this table.', 
-                      Colors.redAccent
-                    );
-                    return;
-                  }
-
-                  if (dialogContext.mounted) Navigator.pop(dialogContext);
-                  _showSnackBar('Password updated successfully! Old password cleared.', Colors.green);
-                } catch (e) {
-                  _showSnackBar('Failed to safely store new credentials.', Colors.redAccent);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF4B3525),
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
-              ),
-              child: const Text('Update & Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   void _showSnackBar(String message, Color backgroundColor) {
@@ -353,7 +233,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: _handleForgotPassword,
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
+                      );
+                    },
                     style: TextButton.styleFrom(
                       padding: EdgeInsets.zero,
                       minimumSize: const Size(50, 30),
@@ -394,6 +279,29 @@ class _LoginScreenState extends State<LoginScreen> {
                         : const Text('Log in', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                   ),
                 ),
+                // Only show the register link if no manager has been
+                // registered yet — this is a single-manager app.
+                if (!_checkingManager && !_managerExists) ...[
+                  const SizedBox(height: 14),
+                  Center(
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                        );
+                      },
+                      child: const Text(
+                        'No manager account yet — Register',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF5C4635),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
