@@ -3,7 +3,7 @@ name: Deploy Flutter Web to GitHub Pages
 on:
   push:
     branches:
-      - main  # Triggers the deployment whenever you push code to main
+      - branch1
 
 jobs:
   build-and-deploy:
@@ -21,6 +21,9 @@ jobs:
         run: |
           flutter pub get
           flutter build web --base-href "/"
+
+      - name: Preserve Custom Domain
+        run: echo "santiagosfurniture.page" > build/web/CNAME
 
       - name: Push Compiled Files to GitHub Pages Repo
         uses: cpina/github-action-push-to-another-repository@main
