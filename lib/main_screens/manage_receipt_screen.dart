@@ -616,16 +616,19 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                       controller: _searchController,
                       onChanged: (value) => setState(() => query = value),
                       decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.search),
                         hintText: "Search by Receipt ID...",
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(30)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
+                        prefixIcon: const Icon(Icons.search), 
+                        filled: true, fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 15),
+                        border:OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30),
+                        borderSide: BorderSide(color: Colors.brown.withOpacity(0.2))),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), 
+                        borderSide: const BorderSide(color: Colors.brown)),
+                             ),
+                          ),
+                       ),
+                       const SizedBox(height: 18),
                   Container(
                     decoration: const BoxDecoration(
                       color: Colors.white,

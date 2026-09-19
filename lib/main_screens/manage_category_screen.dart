@@ -140,19 +140,24 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
         const Padding(padding: EdgeInsets.symmetric(horizontal: 32), child: Divider(height: 28, color: Color(0xFFD9CEC5))),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
+
           child: TextField(
             controller: _searchController,
             onChanged: (v) => setState(() => _searchQuery = v),
             decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search_rounded, color: _textMuted, size: 22),
               hintText: 'Search categories...',
-              filled: true,
-              fillColor: _white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
+              prefixIcon: const Icon(Icons.search),
+              filled: true, fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 15),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), 
+              borderSide: BorderSide(color: Colors.brown.withOpacity(0.2))),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), 
+              borderSide: const BorderSide(color: Colors.brown)),
+                ),
+              ),
+           ),
+               const SizedBox(height: 18), 
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Container(
