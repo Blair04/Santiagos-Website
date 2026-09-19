@@ -115,7 +115,7 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(backgroundColor: _bg, body: _buildMain());
+    return Scaffold(backgroundColor: Color(0xFFF9F6F0), body: _buildMain());
   }
 
   Widget _buildMain() {
@@ -123,7 +123,7 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(32, 32, 32, 0),
+          padding: const EdgeInsets.fromLTRB(32, 32, 32, 0), //backgroundColor: const Color(0xFFF8F5F1),
           child: Row(
             children: [
               const Text('Manage Categories', style: TextStyle(color: _brown, fontSize: 26, fontWeight: FontWeight.bold)),

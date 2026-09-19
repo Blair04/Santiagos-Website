@@ -628,7 +628,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                              ),
                           ),
                        ),
-                       const SizedBox(height: 18),
+                       const SizedBox(height: 18, width:16),
                   Container(
                     decoration: const BoxDecoration(
                       color: Colors.white,
