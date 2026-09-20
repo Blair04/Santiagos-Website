@@ -203,7 +203,7 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
           ),
         ),
 
-      // SEARCH BAR + ADD NEW CATEGORY BUTTON
+      
 Padding(
   padding: const EdgeInsets.symmetric(horizontal: 32),
   child: Row(
@@ -249,7 +249,6 @@ Padding(
 
       const SizedBox(width: 16),
 
-      // Add New Category Button
       SizedBox(
         height: 46,
         width: 165,

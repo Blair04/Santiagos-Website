@@ -607,6 +607,9 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                 style: TextStyle(
                     color: Colors.brown, fontSize: 20, fontWeight: FontWeight.bold),
               ),
+              const SizedBox(height: 16),
+
+              const Divider(color: Color(0xFFE0DAD5), thickness: 1, height:1,),
               const SizedBox(height: 20),
               
               Row(
