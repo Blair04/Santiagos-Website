@@ -136,7 +136,7 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
                         ),
                       ),
                       style: TextButton.styleFrom(
-                        backgroundColor: const Color(0xFF4A3E3D),
+                        backgroundColor: const Color(0xFF6D4C41),
                         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),

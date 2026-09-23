@@ -603,9 +603,9 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Customer Receipts',
+                'Customer Receipts',  
                 style: TextStyle(
-                    color: Colors.brown, fontSize: 20, fontWeight: FontWeight.bold),
+                    color: Colors.brown, fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
 
@@ -963,7 +963,7 @@ class HeaderText extends StatelessWidget {
       text,
       textAlign: TextAlign.center,
       style: const TextStyle(
-          fontWeight: FontWeight.bold, color: Colors.black87),
+          fontWeight: FontWeight.bold, color: Colors.brown),
     );
   }
 }

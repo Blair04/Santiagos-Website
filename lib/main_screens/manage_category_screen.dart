@@ -184,11 +184,11 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
           child: Row(
             children: [
               const Text(
-                'Manage Categories',
+                'Manage Categories', 
                 style: TextStyle(
                   color: _brown,
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 24, 
+                  fontWeight: FontWeight.bold, 
                 ),
               ),
             ],

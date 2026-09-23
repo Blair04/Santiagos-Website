@@ -21,6 +21,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   static const Color _background = Color(0xFFF9F6F0);
   static const Color _ink = Color(0xFF2C2221);
   static const Color _bronze = Color(0xFFC68B59);
+  static const Color _darkBrown = Color(0xFF6D4C41);
   static const Color _sage = Color(0xFF438A5E);
   static const Color _mutedRed = Color(0xFFD9534F);
   static const String _localAvatarKey = 'adminProfileAvatarBase64';
@@ -232,11 +233,11 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Manage Profile',
+                      'Manage Profile', 
                       style: TextStyle(
-                        color: _ink,
-                        fontSize: constraints.maxWidth < 600 ? 28 : 34,
-                        fontWeight: FontWeight.w800,
+                        color: Colors.brown,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
                         letterSpacing: -0.5,
                       ),
                     ),
@@ -248,7 +249,11 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
                         fontSize: 15,
                       ),
                     ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 15),
+
+                    const Divider(color: Color(0xFFE0DAD5), thickness: 1, height: 1),
+                    const SizedBox(height: 25), 
+                    
                     if (useColumns)
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -284,101 +289,92 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
     );
   }
 
+  
+
   Widget _buildProfileCard() {
-    return _buildSectionCard(
-      title: 'Profile Photo',
-      subtitle: 'JPG, PNG, or WebP up to 5 MB',
-      child: Column(
-        children: [
-          SizedBox(
-            width: 150,
-            height: 150,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Positioned.fill(
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: _bronze.withValues(alpha: 0.35),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _ink.withValues(alpha: 0.08),
-                          blurRadius: 18,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: ClipOval(child: _buildAvatarImage()),
-                  ),
-                ),
-                Positioned(
-                  right: 2,
-                  bottom: 4,
-                  child: IconButton.filled(
-                    tooltip: 'Choose profile photo',
-                    onPressed: _isUploadingAvatar ? null : _pickAndUploadAvatar,
-                    style: IconButton.styleFrom(
-                      backgroundColor: _bronze,
-                      foregroundColor: Colors.white,
-                    ),
-                    icon: _isUploadingAvatar
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.camera_alt_outlined, size: 19),
-                  ),
+  return _buildSectionCard(
+    title: 'Profile Photo',
+    subtitle: 'JPG, PNG, or WebP up to 5 MB',
+    child: Column(
+      children: [
+        SizedBox(
+          width: 150,
+          height: 150,
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: _darkBrown.withValues(alpha: 0.35),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: _ink.withValues(alpha: 0.08),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Administrator',
-            style: TextStyle(
-              color: _ink,
-              fontSize: 19,
-              fontWeight: FontWeight.w800,
+            child: ClipOval(
+              child: _buildAvatarImage(),
             ),
           ),
-          const SizedBox(height: 5),
-          Text(
-            _currentUser?.email ?? 'No authenticated account',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+        ),
+
+        const SizedBox(height: 20),
+
+        const Text(
+          'Administrator',
+          style: TextStyle(
+            color: _ink,
+            fontSize: 19,
+            fontWeight: FontWeight.w800,
           ),
-          const SizedBox(height: 5),
-          Text(
-            _memberSinceLabel(_currentUser),
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+        ),
+
+        const SizedBox(height: 5),
+
+        Text(
+          _currentUser?.email ?? 'No authenticated account',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.grey.shade600,
+            fontSize: 12,
           ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _isUploadingAvatar ? null : _pickAndUploadAvatar,
-              icon: const Icon(Icons.upload_outlined),
-              label: const Text('Upload photo'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _bronze,
-                side: BorderSide(color: _bronze.withValues(alpha: 0.45)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+
+        const SizedBox(height: 5),
+
+        Text(
+          _memberSinceLabel(_currentUser),
+          style: TextStyle(
+            color: Colors.grey.shade500,
+            fontSize: 11,
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _isUploadingAvatar ? null : _pickAndUploadAvatar,
+            icon: const Icon(Icons.upload_outlined),
+            label: const Text('Upload photo'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _darkBrown,
+              side: BorderSide(
+                color: _darkBrown.withValues(alpha: 0.45),
               ),
+              padding: const EdgeInsets.symmetric(vertical: 14),
             ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildAvatarImage() {
     if (_avatarBytes != null) {
@@ -545,7 +541,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   }) {
     return InputDecoration(
       hintText: hintText,
-      prefixIcon: Icon(icon, color: _bronze, size: 20),
+      prefixIcon: Icon(icon, color: _darkBrown, size: 20),
       suffixIcon: suffixIcon,
       filled: true,
       fillColor: const Color(0xFFFCFAF8),
@@ -559,7 +555,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: _bronze, width: 1.5),
+        borderSide: const BorderSide(color: _darkBrown, width: 1.5),
       ),
     );
   }
@@ -582,7 +578,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
 
   ButtonStyle _primaryButtonStyle() {
     return FilledButton.styleFrom(
-      backgroundColor: _bronze,
+      backgroundColor: _darkBrown,
       foregroundColor: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
