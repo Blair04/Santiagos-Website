@@ -260,23 +260,11 @@ class NavigationContent extends StatelessWidget {
         ),
 
         buildNavItem(title: 'Dashboard', icon: Icons.dashboard, index: 0),
-        buildNavItem(title: 'Manage Receipts', icon: Icons.receipt, index: 1),
+        buildNavItem(title: 'Manage Order Slips', icon: Icons.receipt, index: 1),
         buildNavItem(title: 'Manage Products', icon: Icons.chair, index: 2),
-        buildNavItem(
-          title: 'Manage Categories',
-          icon: Icons.category,
-          index: 3,
-        ),
-        buildNavItem(
-          title: 'Product Sales',
-          icon: Icons.receipt_long,
-          index: 4,
-        ),
-        buildNavItem(
-          title: 'Manage Profile',
-          icon: Icons.manage_accounts_outlined,
-          index: 5,
-        ),
+        buildNavItem(title: 'Manage Categories',icon: Icons.category,index: 3,),
+        buildNavItem(title: 'Product Sales',icon: Icons.receipt_long,index: 4,),
+        buildNavItem(title: 'Manage Profile',icon: Icons.manage_accounts_outlined,index: 5,),
 
         const Spacer(),
         const Divider(),

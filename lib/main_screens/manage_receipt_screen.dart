@@ -603,7 +603,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Customer Receipts',  
+                'Customer Order Slips',  
                 style: TextStyle(
                     color: Colors.brown, fontSize: 24, fontWeight: FontWeight.bold),
               ),
@@ -619,7 +619,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                       controller: _searchController,
                       onChanged: (value) => setState(() => query = value),
                       decoration: InputDecoration(
-                        hintText: "Search by Receipt ID...",
+                        hintText: "Search by Slip ID...",
                         prefixIcon: const Icon(Icons.search), 
                         filled: true, fillColor: Colors.white,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 15),

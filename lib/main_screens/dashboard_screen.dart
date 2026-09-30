@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Totals used by both the preorder summary card and status donut chart.
@@ -76,6 +77,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static const Color _ink = Color(0xFF2C2221);
   static const Color _bronze = Color(0xFFC68B59);
   static const Color _slateBlue = Color(0xFF4A7A96);
+  static const Color _darkBrown = Color(0xFF6D4C41);
   static const Color _sage = Color(0xFF438A5E);
   static const Color _mutedRed = Color(0xFFD9534F);
   static const Color _mutedOrange = Color(0xFFF0AD4E);
@@ -290,7 +292,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: IconButton.filled(
             onPressed: _isLoading ? null : _fetchDashboardData,
             style: IconButton.styleFrom(
-              backgroundColor: _ink,
+              backgroundColor: _darkBrown,
               foregroundColor: Colors.white,
               disabledBackgroundColor: _ink.withValues(alpha: 0.55),
               fixedSize: const Size(46, 46),
@@ -472,11 +474,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final availableWidth = constraints.maxWidth;
-        // Four columns fit wide desktops, two fit tablets, and one prevents
-        // card content from being squeezed on mobile screens.
-        final columns = availableWidth >= 1040
+        // Four columns stay in one row on laptops beside the side menu, two fit
+        // tablets, and one prevents card content from being squeezed on mobile.
+        final columns = availableWidth >= 720
             ? 4
-            : availableWidth >= 620
+            : availableWidth >= 440
             ? 2
             : 1;
         final spacing = availableWidth < 600 ? 16.0 : 24.0;
@@ -639,17 +641,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (context, constraints) {
         // Each analytics pair becomes a vertical stack before its text or
         // chart labels can overflow.
-        if (constraints.maxWidth < 960) {
+        if (constraints.maxWidth < 760) {
           return Column(children: [left, const SizedBox(height: 24), right]);
         }
 
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(flex: leftFlex, child: left),
-            const SizedBox(width: 24),
-            Expanded(flex: rightFlex, child: right),
-          ],
+        return _EqualHeightRow(
+          flexes: [leftFlex, rightFlex],
+          spacing: 24,
+          children: [left, right],
         );
       },
     );
@@ -662,23 +661,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 1120
-            ? 3
-            : constraints.maxWidth >= 700
-            ? 2
-            : 1;
-        const spacing = 24.0;
-        final width =
-            (constraints.maxWidth - (spacing * (columns - 1))) / columns;
+        // Stack all three rather than wrapping 2 + 1, so the row never ends
+        // up with one card twice as wide as the others.
+        if (constraints.maxWidth < 800) {
+          return Column(
+            children: [
+              first,
+              const SizedBox(height: 24),
+              second,
+              const SizedBox(height: 24),
+              third,
+            ],
+          );
+        }
 
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: [
-            SizedBox(width: width, child: first),
-            SizedBox(width: width, child: second),
-            SizedBox(width: width, child: third),
-          ],
+        return _EqualHeightRow(
+          flexes: const [1, 1, 1],
+          spacing: 24,
+          children: [first, second, third],
         );
       },
     );
@@ -1063,7 +1063,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           final button = FilledButton(
             onPressed: widget.onViewProducts,
             style: FilledButton.styleFrom(
-              backgroundColor: _bronze,
+              backgroundColor: _darkBrown,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               shape: RoundedRectangleBorder(
@@ -1938,6 +1938,123 @@ class _SparklinePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _SparklinePainter oldDelegate) {
     return oldDelegate.values != values || oldDelegate.color != color;
+  }
+}
+
+/// Lays children side by side with flex-proportional widths and stretches them
+/// all to the tallest child's height. IntrinsicHeight cannot be used here
+/// because the section cards contain LayoutBuilders.
+class _EqualHeightRow extends MultiChildRenderObjectWidget {
+  final List<int> flexes;
+  final double spacing;
+
+  const _EqualHeightRow({
+    required this.flexes,
+    required this.spacing,
+    required super.children,
+  }) : assert(flexes.length == children.length);
+
+  @override
+  _RenderEqualHeightRow createRenderObject(BuildContext context) {
+    return _RenderEqualHeightRow(flexes: flexes, spacing: spacing);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderEqualHeightRow renderObject,
+  ) {
+    renderObject
+      ..flexes = flexes
+      ..spacing = spacing;
+  }
+}
+
+class _EqualHeightRowParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderEqualHeightRow extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _EqualHeightRowParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _EqualHeightRowParentData> {
+  _RenderEqualHeightRow({required List<int> flexes, required double spacing})
+    : _flexes = flexes,
+      _spacing = spacing;
+
+  List<int> _flexes;
+  set flexes(List<int> value) {
+    if (_listEquals(_flexes, value)) return;
+    _flexes = value;
+    markNeedsLayout();
+  }
+
+  double _spacing;
+  set spacing(double value) {
+    if (_spacing == value) return;
+    _spacing = value;
+    markNeedsLayout();
+  }
+
+  static bool _listEquals(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _EqualHeightRowParentData) {
+      child.parentData = _EqualHeightRowParentData();
+    }
+  }
+
+  @override
+  void performLayout() {
+    final children = getChildrenAsList();
+    final totalFlex = _flexes.fold<int>(0, (sum, flex) => sum + flex);
+    final available = math.max(
+      constraints.maxWidth - _spacing * (children.length - 1),
+      0.0,
+    );
+    final widths = [
+      for (final flex in _flexes) available * flex / math.max(totalFlex, 1),
+    ];
+
+    // First pass measures each child's natural height at its column width;
+    // the second pass forces every child to the tallest of those heights.
+    var rowHeight = 0.0;
+    for (var i = 0; i < children.length; i++) {
+      children[i].layout(
+        BoxConstraints.tightFor(width: widths[i]),
+        parentUsesSize: true,
+      );
+      rowHeight = math.max(rowHeight, children[i].size.height);
+    }
+
+    var x = 0.0;
+    for (var i = 0; i < children.length; i++) {
+      children[i].layout(
+        BoxConstraints.tightFor(width: widths[i], height: rowHeight),
+      );
+      (children[i].parentData! as _EqualHeightRowParentData).offset = Offset(
+        x,
+        0,
+      );
+      x += widths[i] + _spacing;
+    }
+
+    size = constraints.constrain(Size(constraints.maxWidth, rowHeight));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    defaultPaint(context, offset);
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    return defaultHitTestChildren(result, position: position);
   }
 }
 
