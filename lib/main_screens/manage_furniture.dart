@@ -43,17 +43,23 @@ class _ManageFurnitureState extends State<ManageFurniture> {
 
   Future<void> _loadProducts() async {
     try {
-      final response = await _supabase.from('FURNITURE').select('''
-        furniture_id, furniture_name, description, stock, price, created_at, category_id,
-        CATEGORY ( category_name ),
-        VARIANT ( variant_id, color, image_url, ar_model_url )
-      ''').order('created_at', ascending: false);
+      final response = await _supabase
+          .from('FURNITURE')
+          .select('''
+            furniture_id, furniture_name, description, stock, price, created_at, category_id,
+            CATEGORY ( category_name ),
+            VARIANT ( variant_id, color, image_url, ar_model_url )
+          ''')
+          .eq('is_archived', false)
+          .order('created_at', ascending: false);
 
+      if (!mounted) return;
       setState(() {
         _products = List<Map<String, dynamic>>.from(response);
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       _showSnackBar('Error loading products: ${e.toString()}', Colors.red);
     }
@@ -64,35 +70,17 @@ class _ManageFurnitureState extends State<ManageFurniture> {
     setState(() => _animatingArchiveId = furnitureId);
 
     try {
-      final furniturePayload = {
-        'furniture_id': item['furniture_id'],
-        'furniture_name': item['furniture_name'],
-        'description': item['description'],
-        'stock': item['stock'],
-        'price': item['price'],
-        'created_at': item['created_at'],
-        'category_id': item['category_id'],
-      };
+      await _supabase
+          .from('FURNITURE')
+          .update({'is_archived': true}).eq('furniture_id', furnitureId);
 
-      final List<dynamic> variants = item['VARIANT'] is List ? item['VARIANT'] : [];
+      await _supabase
+          .from('VARIANT')
+          .update({'is_archived': true}).eq('furniture_id', furnitureId);
 
-      await _supabase.from('FURNITURE_ARCHIVE').upsert(furniturePayload);
-
-      if (variants.isNotEmpty) {
-        final variantsPayload = variants.map((v) => {
-          'variant_id': v['variant_id'],
-          'color': v['color'],
-          'image_url': v['image_url'],
-          'ar_model_url': v['ar_model_url'],
-          'furniture_id': furnitureId,
-        }).toList();
-        await _supabase.from('VARIANT_ARCHIVE').upsert(variantsPayload);
-      }
-
-      await _supabase.from('FURNITURE').delete().eq('furniture_id', furnitureId);
-      
       await Future.delayed(const Duration(milliseconds: 500));
 
+      if (!mounted) return;
       setState(() {
         _products.removeWhere((p) => p['furniture_id'] == furnitureId);
         _archivedProducts.insert(0, item);
@@ -100,6 +88,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
       });
       _showSnackBar("${item['furniture_name']} archived!", Colors.brown);
     } catch (e) {
+      if (!mounted) return;
       setState(() => _animatingArchiveId = null);
       _showSnackBar("Archive failed: ${e.toString()}", Colors.red);
     }
@@ -107,41 +96,22 @@ class _ManageFurnitureState extends State<ManageFurniture> {
 
   void _unarchiveProduct(Map<String, dynamic> item) async {
     final furnitureId = item['furniture_id'];
+
     try {
-      final furniturePayload = {
-        'furniture_id': item['furniture_id'],
-        'furniture_name': item['furniture_name'],
-        'description': item['description'],
-        'stock': item['stock'],
-        'price': item['price'],
-        'created_at': item['created_at'],
-        'category_id': item['category_id'],
-      };
+      await _supabase
+          .from('FURNITURE')
+          .update({'is_archived': false}).eq('furniture_id', furnitureId);
 
-      final List<dynamic> variants = item['VARIANT'] is List ? item['VARIANT'] : [];
+      await _supabase
+          .from('VARIANT')
+          .update({'is_archived': false}).eq('furniture_id', furnitureId);
 
-      await _supabase.from('FURNITURE').upsert(furniturePayload);
-
-      if (variants.isNotEmpty) {
-        final variantsPayload = variants.map((v) => {
-          'variant_id': v['variant_id'],
-          'color': v['color'],
-          'image_url': v['image_url'],
-          'ar_model_url': v['ar_model_url'],
-          'furniture_id': furnitureId,
-        }).toList();
-
-        await _supabase.from('VARIANT').upsert(variantsPayload);
-      }
-
-      await _supabase.from('FURNITURE_ARCHIVE').delete().eq('furniture_id', furnitureId);
-
+      if (!mounted) return;
       setState(() {
         _archivedProducts.removeWhere((p) => p['furniture_id'] == furnitureId);
         _products.insert(0, item);
       });
 
-      if (!mounted) return;
       Navigator.pop(context);
       Future.delayed(const Duration(milliseconds: 200), () => _openArchiveModal());
       _showSnackBar("${item['furniture_name']} restored to store", Colors.green);
@@ -153,10 +123,14 @@ class _ManageFurnitureState extends State<ManageFurniture> {
   void _openArchiveModal() async {
     String archiveQuery = "";
     try {
-      final response = await _supabase.from('FURNITURE_ARCHIVE').select('''
-        furniture_id, furniture_name, description, stock, price, created_at, category_id,
-        VARIANT:VARIANT_ARCHIVE ( variant_id, color, image_url )
-      ''').order('furniture_name', ascending: true);
+      final response = await _supabase
+          .from('FURNITURE')
+          .select('''
+            furniture_id, furniture_name, description, stock, price, created_at, category_id,
+            VARIANT ( variant_id, color, image_url )
+          ''')
+          .eq('is_archived', true)
+          .order('furniture_name', ascending: true);
 
       setState(() => _archivedProducts = List<Map<String, dynamic>>.from(response));
     } catch (e) {
@@ -169,21 +143,42 @@ class _ManageFurnitureState extends State<ManageFurniture> {
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
           final filteredArchived = _archivedProducts.where((item) {
-            return (item['furniture_name'] ?? '').toString().toLowerCase().contains(archiveQuery.toLowerCase());
+            return (item['furniture_name'] ?? '')
+                .toString()
+                .toLowerCase()
+                .contains(archiveQuery.toLowerCase());
           }).toList();
 
           return Dialog(
             backgroundColor: Colors.transparent,
             child: Container(
-              width: 900, height: 520, padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22)),
+              width: 900,
+              height: 520,
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+              ),
               child: Column(
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text("Archived Products", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.brown)),
-                      IconButton(onPressed: () { Navigator.pop(context); _loadProducts(); }, icon: const Icon(Icons.close)),
+                      const Text(
+                        "Archived Products",
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.brown,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _loadProducts();
+                        },
+                        icon: const Icon(Icons.close),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 15),
@@ -192,48 +187,110 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                     child: TextField(
                       onChanged: (v) => setModalState(() => archiveQuery = v),
                       decoration: InputDecoration(
-                        hintText: "Search all archived items...", prefixIcon: const Icon(Icons.search), filled: true, fillColor: Colors.white,
+                        hintText: "Search all archived items...",
+                        prefixIcon: const Icon(Icons.search),
+                        filled: true,
+                        fillColor: Colors.white,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 15),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide(color: Colors.brown.withOpacity(0.2))),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: const BorderSide(color: Colors.brown)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: BorderSide(color: Colors.brown.withOpacity(0.2)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: const BorderSide(color: Colors.brown),
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(height: 18),
                   Container(
                     padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
-                    decoration: BoxDecoration(color: Colors.brown.withOpacity(0.05), borderRadius: BorderRadius.circular(14)),
-                    child: Row(children: [_headerItem('Image'), _headerItem('Product Name', flex: 2), _headerItem('Price'), _headerItem('Action')]),
+                    decoration: BoxDecoration(
+                      color: Colors.brown.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      children: [
+                        _headerItem('Image'),
+                        _headerItem('Product Name', flex: 2),
+                        _headerItem('Price'),
+                        _headerItem('Stock'),
+                        _headerItem('Action'),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 5),
                   Expanded(
                     child: filteredArchived.isEmpty
-                        ? const Center(child: Text("No archived products.", style: TextStyle(color: Colors.brown)))
+                        ? const Center(
+                            child: Text(
+                              "No archived products.",
+                              style: TextStyle(color: Colors.brown),
+                            ),
+                          )
                         : ListView.builder(
                             itemCount: filteredArchived.length,
                             itemBuilder: (context, index) {
                               final item = filteredArchived[index];
-                              final variants = item['VARIANT'] is List ? item['VARIANT'] : [];
-                              final imageUrl = variants.isNotEmpty ? variants.first['image_url'] : null;
+                              final List<dynamic> variants =
+                                  item['VARIANT'] is List ? item['VARIANT'] : [];
+                              final imageUrl = variants.isNotEmpty
+                                  ? variants.first['image_url']?.toString()
+                                  : null;
 
                               return Container(
-                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-                                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.brown.withOpacity(0.08)))),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 12, horizontal: 10),
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    bottom: BorderSide(
+                                        color: Colors.brown.withOpacity(0.08)),
+                                  ),
+                                ),
                                 child: Row(
                                   children: [
-                                    Expanded(child: Center(child: imageUrl != null && imageUrl.isNotEmpty
-                                        ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(imageUrl, height: 45, width: 45, fit: BoxFit.cover))
-                                        : const Icon(Icons.chair, color: Colors.grey))),
-                                    _dataItem(item['furniture_name']?.toString() ?? '', flex: 2),
+                                    Expanded(
+                                      child: Center(
+                                        child: imageUrl != null && imageUrl.isNotEmpty
+                                            ? ClipRRect(
+                                                borderRadius: BorderRadius.circular(8),
+                                                child: Image.network(
+                                                  imageUrl,
+                                                  height: 45,
+                                                  width: 45,
+                                                  fit: BoxFit.cover,
+                                                ),
+                                              )
+                                            : const Icon(Icons.chair, color: Colors.grey),
+                                      ),
+                                    ),
+                                    _dataItem(item['furniture_name']?.toString() ?? '',
+                                        flex: 2),
                                     _dataItem("₱ ${_formatPrice(item['price'])}"),
                                     _dataItem(item['stock']?.toString() ?? 'N/A'),
-                                    Expanded(child: Center(child: OutlinedButton.icon(
-                                      onPressed: () => _unarchiveProduct(item),
-                                      style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)), side: BorderSide(color: Colors.brown.shade300)),
-                                      icon: const Icon(Icons.unarchive, size: 18, color: Colors.brown),
-                                      label: const Text("Restore", style: TextStyle(color: Colors.brown)),
-                                    ))),
+                                    Expanded(
+                                      child: Center(
+                                        child: OutlinedButton.icon(
+                                          onPressed: () => _unarchiveProduct(item),
+                                          style: OutlinedButton.styleFrom(
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(30),
+                                            ),
+                                            side: BorderSide(color: Colors.brown.shade300),
+                                          ),
+                                          icon: const Icon(Icons.unarchive,
+                                              size: 18, color: Colors.brown),
+                                          label: const Text(
+                                            "Restore",
+                                            style: TextStyle(color: Colors.brown),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                   ],
                                 ),
                               );
@@ -251,25 +308,44 @@ class _ManageFurnitureState extends State<ManageFurniture> {
 
   void _openAddProductSheet(BuildContext context) {
     showModalBottomSheet(
-      context: context, isScrollControlled: true, backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) => const AddFurniture(),
     ).then((_) => _loadProducts());
   }
 
-  void _openEditProductSheet(BuildContext context, Map<String, dynamic> item, Map<String, dynamic>? currentVariant) {
+  void _openEditProductSheet(
+    BuildContext context,
+    Map<String, dynamic> item,
+    Map<String, dynamic>? currentVariant,
+  ) {
     if (currentVariant == null) {
       _showSnackBar('Cannot edit product without active variant.', Colors.red);
       return;
     }
 
     showModalBottomSheet(
-      context: context, isScrollControlled: true, backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) => AddFurniture(editProduct: {
-        'furniture_id': item['furniture_id'], 'furniture_name': item['furniture_name'], 'stock': item['stock'], 'price': item['price'],
-        'description': item['description'], 'category_id': item['category_id'], 'variant_id': currentVariant['variant_id'],
-        'color': currentVariant['color'], 'image_url': currentVariant['image_url'], 'ar_model_url': currentVariant['ar_model_url'],
+        'furniture_id': item['furniture_id'],
+        'furniture_name': item['furniture_name'],
+        'stock': item['stock'],
+        'price': item['price'],
+        'description': item['description'],
+        'category_id': item['category_id'],
+        'variant_id': currentVariant['variant_id'],
+        'color': currentVariant['color'],
+        'image_url': currentVariant['image_url'],
+        'ar_model_url': currentVariant['ar_model_url'],
       }),
     ).then((_) => _loadProducts());
   }
@@ -289,7 +365,10 @@ class _ManageFurnitureState extends State<ManageFurniture> {
   @override
   Widget build(BuildContext context) {
     final filteredProducts = _products.where((item) {
-      return (item['furniture_name'] ?? '').toString().toLowerCase().contains(query.toLowerCase());
+      return (item['furniture_name'] ?? '')
+          .toString()
+          .toLowerCase()
+          .contains(query.toLowerCase());
     }).toList();
 
     return Scaffold(
@@ -302,17 +381,37 @@ class _ManageFurnitureState extends State<ManageFurniture> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('My Products', style: TextStyle(color: Colors.brown, fontSize: 24, fontWeight: FontWeight.bold)),
+                const Text(
+                  'My Products',
+                  style: TextStyle(
+                    color: Colors.brown,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 OutlinedButton.icon(
                   onPressed: _openArchiveModal,
-                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14), side: BorderSide(color: Colors.brown.shade300), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    side: BorderSide(color: Colors.brown.shade300),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
                   icon: const Icon(Icons.archive_outlined, color: Colors.brown, size: 20),
-                  label: const Text("Archive", style: TextStyle(color: Colors.brown, fontWeight: FontWeight.w500)),
+                  label: const Text(
+                    "Archive",
+                    style: TextStyle(color: Colors.brown, fontWeight: FontWeight.w500),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 18),
-            Container(height: 1, width: double.infinity, color: Colors.brown.withOpacity(0.15)),
+            Container(
+              height: 1,
+              width: double.infinity,
+              color: Colors.brown.withOpacity(0.15),
+            ),
             const SizedBox(height: 25),
             Row(
               children: [
@@ -324,22 +423,49 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                       onSubmitted: addToHistory,
                       onChanged: (v) => setState(() => query = v),
                       decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.search), hintText: "Search products...", contentPadding: const EdgeInsets.symmetric(horizontal: 12), filled: true, fillColor: Colors.white,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide(color: Colors.brown.withOpacity(0.2))),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: const BorderSide(color: Colors.brown, width: 1)),
+                        prefixIcon: const Icon(Icons.search),
+                        hintText: "Search products...",
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: BorderSide(color: Colors.brown.withOpacity(0.2)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: const BorderSide(color: Colors.brown, width: 1),
+                        ),
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 16),
                 SizedBox(
-                  height: 46, width: 165,
+                  height: 46,
+                  width: 165,
                   child: ElevatedButton.icon(
                     onPressed: () => _openAddProductSheet(context),
-                    style: ElevatedButton.styleFrom(elevation: 0, backgroundColor: const Color(0xFF6D4C41), padding: const EdgeInsets.symmetric(horizontal: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                    style: ElevatedButton.styleFrom(
+                      elevation: 0,
+                      backgroundColor: const Color(0xFF6D4C41),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
                     icon: const Icon(Icons.add, color: Colors.white, size: 18),
-                    label: const Text("Add New Product", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 13)),
+                    label: const Text(
+                      "Add New Product",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -348,43 +474,94 @@ class _ManageFurnitureState extends State<ManageFurniture> {
             if (searchHistory.isNotEmpty)
               Wrap(
                 spacing: 8,
-                children: searchHistory.map((item) => GestureDetector(
-                  onTap: () => setState(() { _searchController.text = item; query = item; }),
-                  child: Chip(label: Text(item), deleteIcon: const Icon(Icons.close, size: 16), onDeleted: () => setState(() => searchHistory.remove(item))),
-                )).toList(),
+                children: searchHistory
+                    .map(
+                      (item) => GestureDetector(
+                        onTap: () => setState(() {
+                          _searchController.text = item;
+                          query = item;
+                        }),
+                        child: Chip(
+                          label: Text(item),
+                          deleteIcon: const Icon(Icons.close, size: 16),
+                          onDeleted: () => setState(() => searchHistory.remove(item)),
+                        ),
+                      ),
+                    )
+                    .toList(),
               ),
             const SizedBox(height: 25),
             Expanded(
               child: Container(
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.brown.withOpacity(0.1)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))]),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.brown.withOpacity(0.1)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
                 child: Column(
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-                      decoration: BoxDecoration(color: Colors.brown.withOpacity(0.04), borderRadius: const BorderRadius.only(topLeft: Radius.circular(18), topRight: Radius.circular(18))),
+                      decoration: BoxDecoration(
+                        color: Colors.brown.withOpacity(0.04),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(18),
+                          topRight: Radius.circular(18),
+                        ),
+                      ),
                       child: Row(
                         children: [
-                          _headerItem('Image'), _headerItem('Product Name', flex: 2), _headerItem('Price'),
-                          _headerItem('Category', flex: 2), _headerItem('Color/Variant', flex:2), _headerItem('Description', flex: 3),
-                          _headerItem('Stock'), _headerItem('Edit'), _headerItem('Archive'),
+                          _headerItem('Image'),
+                          _headerItem('Product Name', flex: 2),
+                          _headerItem('Price'),
+                          _headerItem('Category', flex: 2),
+                          _headerItem('Color/Variant', flex: 2),
+                          _headerItem('Description', flex: 3),
+                          _headerItem('Stock'),
+                          _headerItem('Edit'),
+                          _headerItem('Archive'),
                         ],
                       ),
                     ),
                     Expanded(
                       child: _isLoading
-                          ? const Center(child: CircularProgressIndicator(color: Colors.brown))
+                          ? const Center(
+                              child: CircularProgressIndicator(color: Colors.brown),
+                            )
                           : filteredProducts.isEmpty
-                              ? const Center(child: Text('No products found.', style: TextStyle(color: Colors.brown)))
+                              ? const Center(
+                                  child: Text(
+                                    'No products found.',
+                                    style: TextStyle(color: Colors.brown),
+                                  ),
+                                )
                               : ListView.builder(
                                   itemCount: filteredProducts.length,
                                   itemBuilder: (context, index) {
                                     final item = filteredProducts[index];
                                     final int furnitureId = item['furniture_id'];
-                                    final categoryName = item['CATEGORY']?['category_name'] ?? 'N/A';
-                                    final List<dynamic> variants = item['VARIANT'] is List ? item['VARIANT'] : [];
+                                    final categoryName =
+                                        item['CATEGORY']?['category_name'] ?? 'N/A';
+                                    final List<dynamic> variants =
+                                        item['VARIANT'] is List ? item['VARIANT'] : [];
 
-                                    final String currentSelection = _selectedColors[furnitureId] ?? (variants.isNotEmpty ? variants.first['color'].toString() : 'N/A');
-                                    final currentVariant = variants.firstWhere((v) => v['color'].toString() == currentSelection, orElse: () => variants.isNotEmpty ? variants.first : null);
+                                    final String currentSelection =
+                                        _selectedColors[furnitureId] ??
+                                            (variants.isNotEmpty
+                                                ? variants.first['color'].toString()
+                                                : 'N/A');
+                                    final currentVariant = variants.firstWhere(
+                                      (v) => v['color'].toString() == currentSelection,
+                                      orElse: () =>
+                                          variants.isNotEmpty ? variants.first : null,
+                                    );
                                     final imageUrl = currentVariant?['image_url']?.toString();
 
                                     return AnimatedOpacity(
@@ -394,29 +571,107 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                                         duration: const Duration(milliseconds: 500),
                                         scale: _animatingArchiveId == furnitureId ? 0.8 : 1.0,
                                         child: Container(
-                                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-                                          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.brown.withOpacity(0.08)))),
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 14, horizontal: 8),
+                                          decoration: BoxDecoration(
+                                            border: Border(
+                                              bottom: BorderSide(
+                                                  color: Colors.brown.withOpacity(0.08)),
+                                            ),
+                                          ),
                                           child: Row(
                                             children: [
-                                              Expanded(child: Center(child: imageUrl != null && imageUrl.isNotEmpty
-                                                  ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(imageUrl, height: 45, width: 45, fit: BoxFit.cover))
-                                                  : const Icon(Icons.chair, color: Colors.grey))),
-                                              _dataItem(item['furniture_name']?.toString() ?? 'No Name', flex: 2),
+                                              Expanded(
+                                                child: Center(
+                                                  child: imageUrl != null &&
+                                                          imageUrl.isNotEmpty
+                                                      ? ClipRRect(
+                                                          borderRadius:
+                                                              BorderRadius.circular(8),
+                                                          child: Image.network(
+                                                            imageUrl,
+                                                            height: 45,
+                                                            width: 45,
+                                                            fit: BoxFit.cover,
+                                                          ),
+                                                        )
+                                                      : const Icon(Icons.chair,
+                                                          color: Colors.grey),
+                                                ),
+                                              ),
+                                              _dataItem(
+                                                  item['furniture_name']?.toString() ??
+                                                      'No Name',
+                                                  flex: 2),
                                               _dataItem('₱ ${_formatPrice(item['price'])}'),
                                               _dataItem(categoryName, flex: 2),
-                                              Expanded(child: variants.length > 1
-                                                  ? DropdownButtonHideUnderline(
-                                                      child: DropdownButton<String>(
-                                                        value: currentSelection, isExpanded: true, icon: const Icon(Icons.arrow_drop_down, size: 16, color: Colors.brown),
-                                                        items: variants.map((v) => DropdownMenuItem<String>(value: v['color'].toString(), child: Center(child: Text(v['color'].toString())))).toList(),
-                                                        onChanged: (newValue) { if (newValue != null) setState(() => _selectedColors[furnitureId] = newValue); },
+                                              Expanded(
+                                                flex: 2,
+                                                child: variants.length > 1
+                                                    ? DropdownButtonHideUnderline(
+                                                        child: DropdownButton<String>(
+                                                          value: currentSelection,
+                                                          isExpanded: true,
+                                                          icon: const Icon(
+                                                            Icons.arrow_drop_down,
+                                                            size: 16,
+                                                            color: Colors.brown,
+                                                          ),
+                                                          items: variants
+                                                              .map(
+                                                                (v) => DropdownMenuItem<String>(
+                                                                  value: v['color'].toString(),
+                                                                  child: Center(
+                                                                    child: Text(
+                                                                        v['color'].toString()),
+                                                                  ),
+                                                                ),
+                                                              )
+                                                              .toList(),
+                                                          onChanged: (newValue) {
+                                                            if (newValue != null) {
+                                                              setState(() =>
+                                                                  _selectedColors[furnitureId] =
+                                                                      newValue);
+                                                            }
+                                                          },
+                                                        ),
+                                                      )
+                                                    : Text(
+                                                        currentSelection,
+                                                        textAlign: TextAlign.center,
+                                                        style: const TextStyle(
+                                                          color: Colors.black87,
+                                                          fontSize: 12,
+                                                        ),
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
                                                       ),
-                                                    )
-                                                  : _dataItem(currentSelection)),
-                                              _dataItem(item['description']?.toString() ?? 'No Description', flex: 3),
+                                              ),
+                                              _dataItem(
+                                                  item['description']?.toString() ??
+                                                      'No Description',
+                                                  flex: 3),
                                               _dataItem(item['stock']?.toString() ?? 'N/A'),
-                                              Expanded(child: Center(child: IconButton(icon: const Icon(Icons.edit_note, color: Colors.brown), onPressed: () => _openEditProductSheet(context, item, currentVariant)))),
-                                              Expanded(child: Center(child: IconButton(icon: const Icon(Icons.archive, color: Colors.brown), onPressed: () => _archiveProduct(item)))),
+                                              Expanded(
+                                                child: Center(
+                                                  child: IconButton(
+                                                    icon: const Icon(Icons.edit_note,
+                                                        color: Colors.brown),
+                                                    onPressed: () => _openEditProductSheet(
+                                                        context, item, currentVariant),
+                                                  ),
+                                                ),
+                                              ),
+                                              Expanded(
+                                                child: Center(
+                                                  child: IconButton(
+                                                    icon: const Icon(Icons.archive,
+                                                        color: Colors.brown),
+                                                    onPressed: () => _archiveProduct(item),
+                                                  ),
+                                                ),
+                                              ),
                                             ],
                                           ),
                                         ),
@@ -437,9 +692,31 @@ class _ManageFurnitureState extends State<ManageFurniture> {
 }
 
 Widget _headerItem(String title, {int flex = 1}) {
-  return Expanded(flex: flex, child: Text(title, textAlign: TextAlign.center, style: const TextStyle(color: Colors.brown, fontWeight: FontWeight.bold, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis));
+  return Expanded(
+    flex: flex,
+    child: Text(
+      title,
+      textAlign: TextAlign.center,
+      style: const TextStyle(
+        color: Colors.brown,
+        fontWeight: FontWeight.bold,
+        fontSize: 13,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    ),
+  );
 }
 
 Widget _dataItem(String text, {int flex = 1}) {
-  return Expanded(flex: flex, child: Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.black87, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis));
+  return Expanded(
+    flex: flex,
+    child: Text(
+      text,
+      textAlign: TextAlign.center,
+      style: const TextStyle(color: Colors.black87, fontSize: 12),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    ),
+  );
 }
