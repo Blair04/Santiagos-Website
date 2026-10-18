@@ -23,7 +23,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
   int? _animatingArchiveId;
   final Map<int, String> _selectedColors = {};
 
-  @override
+  @override 
   void initState() {
     super.initState();
     _loadProducts();

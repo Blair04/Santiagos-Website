@@ -226,7 +226,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${_greetingFor(now)}, Administrator! 👋',
+          '${_greetingFor(now)}, Manager! 👋',
           style: TextStyle(
             fontSize: isMobile ? 28 : 34,
             fontWeight: FontWeight.w800,
