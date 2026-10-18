@@ -174,6 +174,47 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
     try {
       if (mounted) setState(() => _isActionLoading = true);
 
+      final Map<dynamic, int> stockToDeduct = {};
+      final Map<dynamic, int> currentStocks = {};
+
+      if (newStatus == 'Completed') {
+        final items = await _supabase
+            .from('PREORDER_ITEMS')
+            .select('furniture_id, quantity')
+            .eq('preorder_id', preorderId);
+
+        for (var item in items) {
+          final dynamic furnitureId = item['furniture_id'];
+          final int qty = (item['quantity'] ?? 0) as int;
+          stockToDeduct[furnitureId] = (stockToDeduct[furnitureId] ?? 0) + qty;
+        }
+
+        for (final entry in stockToDeduct.entries) {
+          final stockRow = await _supabase
+              .from('FURNITURE')
+              .select('furniture_name, stock')
+              .eq('furniture_id', entry.key)
+              .single();
+
+          final int currentStock = (stockRow['stock'] ?? 0) as int;
+          currentStocks[entry.key] = currentStock;
+
+          if (currentStock < entry.value) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                      "Not enough stock for ${stockRow['furniture_name']}. Available: $currentStock, needed: ${entry.value}"),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              setState(() => _isActionLoading = false);
+            }
+            return;
+          }
+        }
+      }
+
       final updatedPreorder = await _supabase
           .from('PREORDER')
           .update({'status': newStatus})
@@ -194,6 +235,32 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
           setState(() => _isActionLoading = false);
         }
         return;
+      }
+
+      if (newStatus == 'Completed') {
+        for (final entry in stockToDeduct.entries) {
+          final int newStock = currentStocks[entry.key]! - entry.value;
+
+          final updatedFurniture = await _supabase
+              .from('FURNITURE')
+              .update({'stock': newStock})
+              .eq('furniture_id', entry.key)
+              .select();
+
+          debugPrint("✅ FURNITURE stock update result: $updatedFurniture");
+
+          if (updatedFurniture.isEmpty) {
+            debugPrint("⚠️ FURNITURE stock update failed. Check RLS UPDATE policy for FURNITURE table.");
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Stock update failed! Check Supabase RLS UPDATE policy for FURNITURE table."),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            }
+          }
+        }
       }
 
       if (newStatus == 'Cancelled' && receiptId != null) {
@@ -242,7 +309,15 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
       }
     } catch (e) {
       debugPrint("❌ Update Error: $e");
-      if (mounted) setState(() => _isActionLoading = false);
+      if (mounted) {
+        setState(() => _isActionLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Could not complete receipt: $e"),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
     }
   }
 

@@ -16,12 +16,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isPasswordVisible = false;
   bool _isLoading = false;
 
-  // Whether a manager account has already been registered.
-  // Starts as `true` (hide register link) until we've confirmed otherwise,
-  // so the button doesn't flash on-screen while loading.
-  bool _managerExists = true;
-  bool _checkingManager = true;
-
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
@@ -31,7 +25,6 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _checkSavedSession();
-    _checkManagerExists();
   }
 
   Future<void> _checkSavedSession() async {
@@ -48,35 +41,6 @@ class _LoginScreenState extends State<LoginScreen> {
           builder: (context) => const MainResponsivePage(),
         ),
       );
-    }
-  }
-
-  /// Checks the lightweight `app_state` table to see whether a manager
-  /// has already registered. This table has a single row and is safe to
-  /// read anonymously (it stores a boolean, no personal data).
-  Future<void> _checkManagerExists() async {
-    try {
-      final result = await _supabase
-          .from('app_state')
-          .select('manager_registered')
-          .eq('id', 1)
-          .maybeSingle();
-
-      if (mounted) {
-        setState(() {
-          _managerExists = (result?['manager_registered'] as bool?) ?? false;
-          _checkingManager = false;
-        });
-      }
-    } catch (_) {
-      // If the check fails (e.g. table not created yet), default to
-      // allowing registration so the manager isn't locked out.
-      if (mounted) {
-        setState(() {
-          _managerExists = false;
-          _checkingManager = false;
-        });
-      }
     }
   }
 
@@ -279,29 +243,34 @@ class _LoginScreenState extends State<LoginScreen> {
                         : const Text('Log in', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                   ),
                 ),
-                // Only show the register link if no manager has been
-                // registered yet — this is a single-manager app.
-                if (!_checkingManager && !_managerExists) ...[
-                  const SizedBox(height: 14),
-                  Center(
-                    child: TextButton(
-                      onPressed: () {
+                const SizedBox(height: 14),
+                // Always-visible Create account link
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      "Don't have an account? ",
+                      style: TextStyle(fontSize: 12, color: Color(0xFF5C4635)),
+                    ),
+                    GestureDetector(
+                      onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(builder: (context) => const RegisterScreen()),
                         );
                       },
                       child: const Text(
-                        'No manager account yet — Register',
+                        'Create account',
                         style: TextStyle(
                           fontSize: 12,
                           color: Color(0xFF5C4635),
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.bold,
+                          decoration: TextDecoration.underline,
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ],
             ),
           ),
