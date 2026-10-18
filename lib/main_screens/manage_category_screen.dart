@@ -217,7 +217,7 @@ Padding(
             onChanged: (v) => setState(() => _searchQuery = v),
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search),
-              hintText: "Search categories...",
+              hintText: "Search Category...",
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 12,
               ),

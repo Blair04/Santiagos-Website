@@ -128,7 +128,7 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
                     ),
                     child: Container(
                       width: 300,
-                      color: const Color(0xFFD8C8BC),
+                      color: const Color(0xFFD9C3B3),
                       child: NavigationContent(
                         selectedIndex: _selectedIndex,
                         onItemSelected: (index) {
@@ -173,46 +173,61 @@ class NavigationContent extends StatelessWidget {
     required this.profileAvatarBytes,
   });
 
-  Widget buildNavItem({
-    required String title,
-    required IconData icon,
-    required int index,
-  }) {
-    bool isSelected = selectedIndex == index;
+Widget buildNavItem({
+  required String title,
+  required IconData icon,
+  required int index,
+}) {
+  bool isSelected = selectedIndex == index;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: () => onItemSelected(index),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: isSelected ? Colors.white : Colors.transparent,
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Row(
-              children: [
-                Icon(icon, color: isSelected ? Colors.black : Colors.black54),
-                const SizedBox(width: 12),
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: isSelected ? Colors.black : Colors.black54,
-                    fontWeight: isSelected
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                  ),
+  return Padding(
+    padding: const EdgeInsets.symmetric(
+      horizontal: 12,
+      vertical: 6,
+    ),
+    child: MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => onItemSelected(index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 14,
+          ),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? const Color(0xFF805445)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                color: isSelected
+                    ? Colors.white
+                    : Colors.black54,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: TextStyle(
+                  color: isSelected
+                      ? Colors.white
+                      : Colors.black54,
+                  fontWeight: isSelected
+                      ? FontWeight.bold
+                      : FontWeight.normal,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -221,7 +236,7 @@ class NavigationContent extends StatelessWidget {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(20),
-          color: const Color.fromRGBO(215, 199, 187, 1.0),
+          color: const Color.fromRGBO(217, 195, 179, 1),
           child: Column(
             children: [
               const SizedBox(height: 20),

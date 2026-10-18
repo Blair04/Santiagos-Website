@@ -22,6 +22,7 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
   static const _brown = Color(0xFF4A3E3D);
   static const _muted = Color(0xFF7D6E6A);
   static const _sand = Color(0xFFE3D5CA);
+  static const _darkBrown = Color(0xFF6D4C41);
 
   late Future<_SalesReport> _future;
 
@@ -181,7 +182,7 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
                                 style: TextStyle(
                                     fontSize: 28,
                                     fontWeight: FontWeight.bold,
-                                    color: _brown)),
+                                    color: _darkBrown)),
                             SizedBox(height: 4),
                             Text(
                               "Track your completed preorder transaction volumes and total revenue streams.",
@@ -190,10 +191,24 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
                           ],
                         ),
                       ),
-                      IconButton(
-                        onPressed: _refresh,
-                        tooltip: 'Refresh',
-                        icon: const Icon(Icons.refresh_rounded, color: _brown),
+                      
+                      Container(
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: IconButton(
+                          onPressed: _refresh,
+                          tooltip: 'Refresh',
+                          icon: const Icon(Icons.refresh, color: Colors.brown),
+                        ),
                       ),
                     ],
                   ),

@@ -424,7 +424,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                       onChanged: (v) => setState(() => query = v),
                       decoration: InputDecoration(
                         prefixIcon: const Icon(Icons.search),
-                        hintText: "Search products...",
+                        hintText: "Search Product...",
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                         filled: true,
                         fillColor: Colors.white,
