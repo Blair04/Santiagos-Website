@@ -40,6 +40,10 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   bool _isUpdatingPassword = false;
   bool _showPasswords = false;
 
+  // --- Manager connection ---
+  String? _managerBranchId; // branch_id from the managers row
+  bool _managerLinked = false; // true once the managers row is found & active
+
   User? get _currentUser => _supabase.auth.currentUser;
 
   @override
@@ -50,6 +54,28 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
         ?.toString()
         .trim();
     _loadLocalAvatar();
+    _loadManagerLink();
+  }
+
+  /// Finds the managers row whose id matches the signed-in Auth user
+  /// and remembers its branch_id.
+  Future<void> _loadManagerLink() async {
+    final user = _currentUser;
+    if (user == null) return;
+    try {
+      final row = await _supabase
+          .from('managers')
+          .select('id, branch_id, is_active')
+          .eq('id', user.id)
+          .maybeSingle();
+      if (!mounted) return;
+      setState(() {
+        _managerLinked = row != null && row['is_active'] == true;
+        _managerBranchId = row?['branch_id']?.toString();
+      });
+    } catch (_) {
+      // Leave unlinked; the update methods will report it.
+    }
   }
 
   Future<void> _loadLocalAvatar() async {
@@ -148,6 +174,18 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
     setState(() => _isUpdatingEmail = true);
     try {
       await _supabase.auth.updateUser(UserAttributes(email: email));
+
+      // If email confirmation is off, Auth changes the email right away,
+      // so mirror it into managers (same id and branch_id).
+      final updatedEmail = _supabase.auth.currentUser?.email;
+      if (updatedEmail == email && _managerBranchId != null) {
+        await _supabase
+            .from('managers')
+            .update({'email': email})
+            .eq('id', _currentUser!.id)
+            .eq('branch_id', _managerBranchId!);
+      }
+
       if (!mounted) return;
       _showMessage(
         'Email update submitted. Check for a confirmation message if required.',
@@ -174,10 +212,19 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
       _showMessage('The password confirmation does not match.', _mutedRed);
       return;
     }
+    if (!_managerLinked || _managerBranchId == null) {
+      _showMessage(
+        'No active manager account is linked to this login.',
+        _mutedRed,
+      );
+      return;
+    }
 
     setState(() => _isUpdatingPassword = true);
     try {
+      // The login password lives in Supabase Auth, tied to this user's id.
       await _supabase.auth.updateUser(UserAttributes(password: password));
+
       _passwordController.clear();
       _confirmPasswordController.clear();
       if (!mounted) return;
@@ -233,7 +280,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Manage Profile', 
+                      'Manage Profile',
                       style: TextStyle(
                         color: Colors.brown,
                         fontSize: 28,
@@ -251,9 +298,13 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
                     ),
                     const SizedBox(height: 15),
 
-                    const Divider(color: Color(0xFFE0DAD5), thickness: 1, height: 1),
-                    const SizedBox(height: 25), 
-                    
+                    const Divider(
+                      color: Color(0xFFE0DAD5),
+                      thickness: 1,
+                      height: 1,
+                    ),
+                    const SizedBox(height: 25),
+
                     if (useColumns)
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -289,92 +340,78 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
     );
   }
 
-  
-
   Widget _buildProfileCard() {
-  return _buildSectionCard(
-    title: 'Profile Photo',
-    subtitle: 'JPG, PNG, or WebP up to 5 MB',
-    child: Column(
-      children: [
-        SizedBox(
-          width: 150,
-          height: 150,
-          child: Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: _darkBrown.withValues(alpha: 0.35),
+    return _buildSectionCard(
+      title: 'Profile Photo',
+      subtitle: 'JPG, PNG, or WebP up to 5 MB',
+      child: Column(
+        children: [
+          SizedBox(
+            width: 150,
+            height: 150,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: _darkBrown.withValues(alpha: 0.35)),
+                boxShadow: [
+                  BoxShadow(
+                    color: _ink.withValues(alpha: 0.08),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: _ink.withValues(alpha: 0.08),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: ClipOval(
-              child: _buildAvatarImage(),
+              child: ClipOval(child: _buildAvatarImage()),
             ),
           ),
-        ),
 
-        const SizedBox(height: 20),
+          const SizedBox(height: 20),
 
-        const Text(
-          'Administrator',
-          style: TextStyle(
-            color: _ink,
-            fontSize: 19,
-            fontWeight: FontWeight.w800,
+          const Text(
+            'Administrator',
+            style: TextStyle(
+              color: _ink,
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+            ),
           ),
-        ),
 
-        const SizedBox(height: 5),
+          const SizedBox(height: 5),
 
-        Text(
-          _currentUser?.email ?? 'No authenticated account',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.grey.shade600,
-            fontSize: 12,
+          Text(
+            _currentUser?.email ?? 'No authenticated account',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
           ),
-        ),
 
-        const SizedBox(height: 5),
+          const SizedBox(height: 5),
 
-        Text(
-          _memberSinceLabel(_currentUser),
-          style: TextStyle(
-            color: Colors.grey.shade500,
-            fontSize: 11,
+          Text(
+            _memberSinceLabel(_currentUser),
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
           ),
-        ),
 
-        const SizedBox(height: 20),
+          const SizedBox(height: 20),
 
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _isUploadingAvatar ? null : _pickAndUploadAvatar,
-            icon: const Icon(Icons.upload_outlined),
-            label: const Text('Upload photo'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: _darkBrown,
-              side: BorderSide(
-                color: _darkBrown.withValues(alpha: 0.45),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _isUploadingAvatar ? null : _pickAndUploadAvatar,
+              icon: const Icon(Icons.upload_outlined),
+              label: const Text('Upload photo'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _darkBrown,
+                side: BorderSide(color: _darkBrown.withValues(alpha: 0.45)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-              padding: const EdgeInsets.symmetric(vertical: 14),
             ),
           ),
-        ),
-      ],
-    ),
-  );
-}
+        ],
+      ),
+    );
+  }
 
   Widget _buildAvatarImage() {
     if (_avatarBytes != null) {
