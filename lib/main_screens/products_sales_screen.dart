@@ -178,7 +178,7 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("Product Sales",
+                            Text("Sales",
                                 style: TextStyle(
                                     fontSize: 28,
                                     fontWeight: FontWeight.bold,

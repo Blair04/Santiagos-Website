@@ -688,8 +688,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return _buildContentSectionContainer(
       title: 'Sales Activity',
       subtitle:
-          '${_formatCurrency(data.completedRevenue)} completed revenue • '
-          'receipts issued over the last 7 days',
+          'order slips issued over the last 7 days',
       child: SizedBox(
         height: 260,
         child: _WeeklyActivityChart(activity: data.weeklyActivity),
@@ -1520,19 +1519,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String _formatShortDate(DateTime date) {
     const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
+      'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec',];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
