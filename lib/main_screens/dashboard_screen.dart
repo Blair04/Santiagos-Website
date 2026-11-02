@@ -38,12 +38,24 @@ class TopPreorderItem {
   const TopPreorderItem({required this.name, required this.quantity});
 }
 
-/// Number of submitted receipts recorded for one calendar day.
+/// Number of generated pre-order slips recorded for one calendar day.
 class DailyPreorderActivity {
   final DateTime date;
   final int count;
+  final double amount;
 
-  const DailyPreorderActivity({required this.date, required this.count});
+  const DailyPreorderActivity({
+    required this.date,
+    required this.count,
+    this.amount = 0,
+  });
+}
+
+/// Completed-order revenue grouped by preorder date for the trend chart.
+class DailyRevenueMetric {
+  final DateTime date;
+  final double amount;
+  const DailyRevenueMetric({required this.date, required this.amount});
 }
 
 /// Current stock grouped by catalog category for the compact ranked panel.
@@ -54,19 +66,61 @@ class CategoryStockMetric {
   const CategoryStockMetric({required this.name, required this.stockUnits});
 }
 
+class CategoryPerformanceMetric {
+  final String name;
+  final double revenue;
+  final int unitsSold;
+  final int preorderCount;
+
+  const CategoryPerformanceMetric({
+    required this.name,
+    required this.revenue,
+    required this.unitsSold,
+    required this.preorderCount,
+  });
+}
+
+class TopFurnitureRevenueMetric {
+  final String name;
+  final double revenue;
+  final List<double> weeklyRevenue;
+
+  const TopFurnitureRevenueMetric({
+    required this.name,
+    required this.revenue,
+    required this.weeklyRevenue,
+  });
+}
+
 /// Receipt activity available from the existing dashboard select.
 class RecentReceiptMetric {
+  final String receiptId;
+  final String customerName;
   final DateTime? issuedAt;
+  final double totalAmount;
   final String status;
 
-  const RecentReceiptMetric({required this.issuedAt, required this.status});
+  const RecentReceiptMetric({
+    required this.receiptId,
+    required this.customerName,
+    required this.issuedAt,
+    required this.totalAmount,
+    required this.status,
+  });
 }
 
 /// Loads live store statistics from Supabase and presents the admin dashboard.
 class DashboardScreen extends StatefulWidget {
   final VoidCallback? onViewProducts;
+  final VoidCallback? onViewSales;
+  final VoidCallback? onViewReceipts;
 
-  const DashboardScreen({super.key, this.onViewProducts});
+  const DashboardScreen({
+    super.key,
+    this.onViewProducts,
+    this.onViewSales,
+    this.onViewReceipts,
+  });
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -88,17 +142,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Object? _loadError;
   bool _isLoading = true;
   DateTime? _lastUpdated;
+  RealtimeChannel? _dashboardRealtimeChannel;
+  bool _realtimeRefreshInProgress = false;
+  bool _realtimeRefreshPending = false;
 
   @override
   void initState() {
     super.initState();
     _fetchDashboardData();
+    _subscribeToDashboardChanges();
+  }
+
+  /// Listen for database changes so completed orders and stock edits are
+  /// reflected without requiring the manager to press Refresh.
+  void _subscribeToDashboardChanges() {
+    final channel = _supabase.channel('dashboard-live-updates');
+
+    for (final table in [
+      'PREORDER',
+      'PREORDER_ITEMS',
+      'RECEIPT',
+      'FURNITURE',
+      'CATEGORY',
+    ]) {
+      channel.onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: table,
+        callback: (_) => _refreshAfterRealtimeChange(),
+      );
+    }
+
+    _dashboardRealtimeChannel = channel;
+    channel.subscribe();
+  }
+
+  Future<void> _refreshAfterRealtimeChange() async {
+    if (_realtimeRefreshInProgress) {
+      _realtimeRefreshPending = true;
+      return;
+    }
+
+    _realtimeRefreshInProgress = true;
+    do {
+      _realtimeRefreshPending = false;
+      await _fetchDashboardData(showLoading: false);
+    } while (_realtimeRefreshPending && mounted);
+    _realtimeRefreshInProgress = false;
+  }
+
+  @override
+  void dispose() {
+    final channel = _dashboardRealtimeChannel;
+    if (channel != null) {
+      _supabase.removeChannel(channel);
+    }
+    super.dispose();
   }
 
   /// Reads the dashboard tables together so one refresh produces one
   /// consistent set of statistics instead of updating cards independently.
-  Future<void> _fetchDashboardData() async {
-    if (mounted) {
+  Future<void> _fetchDashboardData({bool showLoading = true}) async {
+    if (mounted && showLoading) {
       setState(() {
         _isLoading = true;
         _loadError = null;
@@ -109,10 +214,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // These independent selects run in parallel. Relational fields on
       // PREORDER_ITEMS and RECEIPT are resolved through Supabase foreign keys.
       final responses = await Future.wait<dynamic>([
-        _supabase.from('PREORDER').select('preorder_id, status, total_price'),
+        _supabase.from('PREORDER').select('preorder_id, status, total_price, preordered_at'),
         _supabase
             .from('FURNITURE')
-            .select('furniture_id, furniture_name, stock, category_id'),
+            .select('furniture_id, furniture_name, stock, category_id')
+            .eq('is_archived', false),
         _supabase
             .from('CATEGORY')
             .select('category_id, category_name')
@@ -120,15 +226,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _supabase.from('PREORDER_ITEMS').select('''
           quantity,
           furniture_id,
-          FURNITURE ( furniture_name ),
+          preorder_id,
+          FURNITURE ( furniture_name, price, category_id ),
           VARIANT (
-            FURNITURE ( furniture_name )
+            FURNITURE ( furniture_name, price, category_id )
           ),
-          PREORDER ( status )
+          PREORDER ( status, preordered_at )
         '''),
         _supabase.from('RECEIPT').select('''
+          receipt_id,
           issued_at,
-          PREORDER ( status )
+          preorder_id,
+          PREORDER (
+            status,
+            total_price,
+            customer_id,
+            CUSTOMER ( full_name )
+          )
         '''),
       ]);
 
@@ -145,6 +259,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (!mounted) return;
       setState(() {
         _dashboardData = data;
+        _loadError = null;
         _lastUpdated = DateTime.now();
         _isLoading = false;
       });
@@ -243,50 +358,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
             fontWeight: FontWeight.w400,
           ),
         ),
-        if (_lastUpdated != null) ...[
-          const SizedBox(height: 7),
-          Text(
-            'Updated ${_formatTime(_lastUpdated!)}',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade500,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
       ],
     );
 
     final actions = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _ink.withValues(alpha: 0.06)),
-          ),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.calendar_month_outlined,
-                color: _bronze,
-                size: 19,
-              ),
-              const SizedBox(width: 9),
-              Text(
-                _formatDate(now),
-                style: const TextStyle(
-                  color: _ink,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+        if (_lastUpdated != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFECE5DE)),
+              boxShadow: [
+                BoxShadow(
+                  color: _ink.withValues(alpha: 0.035),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
                 ),
-              ),
-            ],
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                
+Icon(
+  Icons.schedule_rounded,
+  size: 17,
+  color: Colors.grey.shade600,
+),
+const SizedBox(width: 8),
+Text(
+  'Updated ${_formatTime(_lastUpdated!)}',
+  style: TextStyle(
+    fontSize: 14,
+    color: Colors.grey.shade700,
+    fontWeight: FontWeight.w600,
+  ),
+),
+
+              ],
+            ),
           ),
-        ),
-        const SizedBox(width: 10),
+          const SizedBox(width: 12),
+        ],
         Tooltip(
           message: 'Refresh dashboard data',
           child: IconButton.filled(
@@ -423,22 +539,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
           leftFlex: 3,
           rightFlex: 2,
           left: _buildSalesActivitySection(data),
-          right: _buildInventoryOverviewSection(data),
+          right: _buildOrderSlipStatusSection(data.preorderStats),
         ),
         const SizedBox(height: 24),
-        _buildResponsiveTriple(
-          first: _buildMostPreorderedSection(data.topPreorders),
-          second: _buildCategoryStockSection(data.categoryStock),
-          third: _buildRecentReceiptsSection(data.recentReceipts),
-        ),
+        _buildStockOverview(data),
         const SizedBox(height: 24),
-        _buildLowStockBanner(data),
-        const SizedBox(height: 30),
         _buildResponsivePair(
-          left: _buildPreorderStatusSection(data.preorderStats),
-          right: _buildStockAlertSection(data.stockAlerts),
+          leftFlex: 3,
+          rightFlex: 2,
+          left: _buildRecentReceiptsSection(data.recentReceipts),
+          right: _buildCategoryPerformanceSection(data.categoryPerformance),
         ),
       ],
+    );
+  }
+
+  Widget _buildPreorderCountCard({
+    required String title,
+    required int count,
+    required String subtitle,
+    required Color color,
+    required IconData icon,
+  }) {
+    return _buildContentSectionContainer(
+      title: title,
+      subtitle: subtitle,
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 28),
+          ),
+          const SizedBox(width: 20),
+          Text(
+            '$count',
+            style: const TextStyle(
+              color: _ink,
+              fontSize: 34,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            'orders',
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRevenueTrendsSection(DashboardData data) {
+    return _buildContentSectionContainer(
+      title: 'Revenue Trends',
+      subtitle: 'Completed pre-orders grouped by preorder date · Last 7 days',
+      child: SizedBox(
+        height: 260,
+        child: _WeeklyRevenueChart(activity: data.weeklyRevenue),
+      ),
     );
   }
 
@@ -473,65 +635,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildSummaryGrid(DashboardData data) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final availableWidth = constraints.maxWidth;
-        // Four columns stay in one row on laptops beside the side menu, two fit
-        // tablets, and one prevents card content from being squeezed on mobile.
-        final columns = availableWidth >= 720
-            ? 4
-            : availableWidth >= 440
-            ? 2
-            : 1;
-        final spacing = availableWidth < 600 ? 16.0 : 24.0;
-        final cardWidth =
-            (availableWidth - (spacing * (columns - 1))) / columns;
-
+        final spacing = constraints.maxWidth < 600 ? 16.0 : 24.0;
+        // Three summary cards share one row on desktop/tablet widths.
+        // On narrow screens, cards stack or use two columns as space allows.
+        final columns = constraints.maxWidth >= 800 ? 3 : 1;
+        final width =
+            (constraints.maxWidth - spacing * (columns - 1)) / columns;
         return Wrap(
           spacing: spacing,
           runSpacing: spacing,
           children: [
             SizedBox(
-              width: cardWidth,
+              width: width,
               child: _buildSummaryCard(
                 title: 'Total Sales',
                 value: _formatCurrency(data.completedRevenue),
-                subtext:
-                    '${data.preorderStats.completedCount} completed preorders',
+                subtext: '${data.preorderStats.completedCount} completed slips',
                 icon: Icons.monetization_on_outlined,
                 accentColor: _bronze,
                 sparkValues: data.activitySparkline,
+                showSparkline: true,
+                onTap: widget.onViewSales,
               ),
             ),
             SizedBox(
-              width: cardWidth,
+              width: width,
               child: _buildSummaryCard(
                 title: 'Total Products',
                 value: '${data.totalFurnitureCount}',
-                subtext: '${data.totalStockCount} catalog units recorded',
+                subtext: 'Active, non-archived furniture',
                 icon: Icons.chair_alt_outlined,
-                accentColor: _bronze,
-                sparkValues: data.productSparkline,
-              ),
-            ),
-            SizedBox(
-              width: cardWidth,
-              child: _buildSummaryCard(
-                title: 'Categories',
-                value: '${data.categoryNames.length}',
-                subtext: 'Active furniture categories',
-                icon: Icons.inventory_2_outlined,
-                accentColor: _slateBlue,
-                sparkValues: data.categorySparkline,
-              ),
-            ),
-            SizedBox(
-              width: cardWidth,
-              child: _buildSummaryCard(
-                title: 'Total Receipts',
-                value: '${data.receiptCount}',
-                subtext: 'Receipts recorded in the system',
-                icon: Icons.receipt_long_outlined,
                 accentColor: _sage,
-                sparkValues: data.activitySparkline,
+                sparkValues: const [],
+                showSparkline: false,
+                onTap: widget.onViewProducts,
+              ),
+            ),
+            SizedBox(
+              width: width,
+              child: _buildSummaryCard(
+                title: 'Top Furniture Product',
+                value: data.topFurniture.name.isEmpty
+                    ? 'No sales yet'
+                    : data.topFurniture.name,
+                subtext: 'Top product revenue: ${_formatCurrency(data.topFurniture.revenue)}',
+                icon: Icons.star_outline_rounded,
+                accentColor: _slateBlue,
+                sparkValues: const [],
+                showSparkline: false,
+                valueFontSize: 19,
               ),
             ),
           ],
@@ -547,8 +699,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required IconData icon,
     required Color accentColor,
     required List<double> sparkValues,
+    bool showSparkline = true,
+    double valueFontSize = 26,
+    VoidCallback? onTap,
   }) {
-    return Container(
+    final card = Container(
       height: 210,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
@@ -588,6 +743,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
               ),
+              if (onTap != null)
+                SizedBox(
+                  width: 34,
+                  height: 34,
+                  child: IconButton(
+                    tooltip: 'Open $title',
+                    onPressed: onTap,
+                    padding: EdgeInsets.zero,
+                    splashRadius: 18,
+                    style: IconButton.styleFrom(
+                      foregroundColor: accentColor,
+                      backgroundColor: Colors.transparent,
+                      hoverColor: accentColor.withValues(alpha: 0.12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 13),
@@ -596,8 +771,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             alignment: Alignment.centerLeft,
             child: Text(
               value,
-              style: const TextStyle(
-                fontSize: 26,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: valueFontSize,
                 fontWeight: FontWeight.w800,
                 color: _ink,
                 letterSpacing: -0.5,
@@ -616,17 +792,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
           const Spacer(),
-          SizedBox(
-            height: 34,
-            width: double.infinity,
-            child: CustomPaint(
-              painter: _SparklinePainter(
-                values: sparkValues,
-                color: accentColor,
+          if (showSparkline)
+            SizedBox(
+              height: 34,
+              width: double.infinity,
+              child: CustomPaint(
+                painter: _SparklinePainter(
+                  values: sparkValues.isEmpty ? const [0, 0, 0, 0, 0, 0, 0] : sparkValues,
+                  color: accentColor,
+                ),
               ),
-            ),
-          ),
+            )
+          else
+            const SizedBox(height: 34),
         ],
+      ),
+    );
+
+    if (onTap == null) return card;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: card,
       ),
     );
   }
@@ -687,12 +877,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildSalesActivitySection(DashboardData data) {
     return _buildContentSectionContainer(
       title: 'Sales Activity',
-      subtitle:
-          'order slips issued over the last 7 days',
+      subtitle: 'Completed order slips and money earned · Last 7 days',
       child: SizedBox(
         height: 260,
         child: _WeeklyActivityChart(activity: data.weeklyActivity),
       ),
+    );
+  }
+
+  Widget _buildOrderSlipStatusSection(PreorderSummary stats) {
+    return _buildContentSectionContainer(
+      title: 'Order Slip Status Breakdown',
+      subtitle: '${stats.total} tracked order slips',
+      child: _buildStatusDonut(stats),
+    );
+  }
+
+  Widget _buildStatusDonut(PreorderSummary stats) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final chart = SizedBox(
+          width: 168,
+          height: 168,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              CustomPaint(
+                size: const Size.square(168),
+                painter: _DonutChartPainter(
+                  values: [stats.pendingCount, stats.completedCount, stats.cancelledCount],
+                  colors: const [_bronze, _sage, _mutedRed],
+                ),
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('${stats.total}',
+                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: _ink)),
+                  Text('SLIPS',
+                      style: TextStyle(fontSize: 9, letterSpacing: 1, fontWeight: FontWeight.w700, color: Colors.grey.shade500)),
+                ],
+              ),
+            ],
+          ),
+        );
+        final legend = Column(
+          children: [
+            _buildLegendItem(label: 'Pending', value: stats.pendingCount, color: _bronze),
+            const SizedBox(height: 10),
+            _buildLegendItem(label: 'Completed', value: stats.completedCount, color: _sage),
+            const SizedBox(height: 10),
+            _buildLegendItem(label: 'Cancelled', value: stats.cancelledCount, color: _mutedRed),
+          ],
+        );
+        if (constraints.maxWidth < 480) {
+          return Column(children: [chart, const SizedBox(height: 20), legend]);
+        }
+        return Row(children: [chart, const SizedBox(width: 20), Expanded(child: legend)]);
+      },
     );
   }
 
@@ -701,8 +943,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final totalProducts = math.max(data.totalFurnitureCount, 1);
 
     return _buildContentSectionContainer(
-      title: 'Inventory Overview',
-      subtitle: '${data.totalFurnitureCount} products monitored',
+      title: 'Inventory Status',
+      subtitle: '${data.totalFurnitureCount} active, non-archived products monitored',
       child: LayoutBuilder(
         builder: (context, constraints) {
           final donut = SizedBox(
@@ -910,188 +1152,299 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildRecentReceiptsSection(List<RecentReceiptMetric> receipts) {
     return _buildContentSectionContainer(
       title: 'Recent Transactions',
-      subtitle: 'Latest receipt activity',
-      child: receipts.isEmpty
-          ? _buildEmptySection(
-              icon: Icons.receipt_long_outlined,
-              message: 'No recent receipts are available.',
-            )
-          : Column(
-              children: [
-                for (var index = 0; index < receipts.length; index++) ...[
-                  _buildRecentReceiptRow(receipts[index]),
-                  if (index != receipts.length - 1) const SizedBox(height: 11),
-                ],
-              ],
-            ),
-    );
-  }
-
-  Widget _buildRecentReceiptRow(RecentReceiptMetric receipt) {
-    final isCompleted = _isCompletedStatus(receipt.status);
-    final isCancelled = _isCancelledStatus(receipt.status);
-    final statusColor = isCompleted
-        ? _sage
-        : isCancelled
-        ? _mutedRed
-        : _mutedOrange;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFCFAF8),
-        borderRadius: BorderRadius.circular(12),
+      subtitle: 'Latest order slips · showing up to 5 transactions',
+      trailing: TextButton.icon(
+        onPressed: widget.onViewReceipts,
+        icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+        label: const Text('View all'),
+        style: TextButton.styleFrom(
+          foregroundColor: _darkBrown,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: _bronze.withValues(alpha: 0.11),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(
-              Icons.receipt_long_outlined,
-              color: _bronze,
-              size: 19,
-            ),
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Receipt recorded',
-                  style: TextStyle(
-                    color: _ink,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  receipt.issuedAt == null
-                      ? 'Date unavailable'
-                      : _formatShortDate(receipt.issuedAt!),
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 10),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.11),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              receipt.status.isEmpty ? 'Recorded' : receipt.status,
-              style: TextStyle(
-                color: statusColor,
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
+          if (receipts.isEmpty)
+            _buildEmptySection(
+              icon: Icons.receipt_long_outlined,
+              message: 'No recent transactions are available.',
+            )
+          else
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                headingRowColor: WidgetStatePropertyAll(const Color(0xFFFBF8F5)),
+                columns: const [
+                  DataColumn(label: Text('Slip ID')),
+                  DataColumn(label: Text('Customer')),
+                  DataColumn(label: Text('Date')),
+                  DataColumn(label: Text('Total amount')),
+                  DataColumn(label: Text('Status')),
+                ],
+                rows: receipts.map((receipt) {
+                  
+            final normalizedStatus = receipt.status.trim().toLowerCase();
+            final status = normalizedStatus.isEmpty? 'Pending'
+             : '${normalizedStatus[0].toUpperCase()}${normalizedStatus.substring(1)}';
+
+            final color = _isCompletedStatus(normalizedStatus)
+            ? _sage: _isCancelledStatus(normalizedStatus)
+            ? _mutedRed : _bronze;
+
+                  return DataRow(cells: [
+                    DataCell(Text('#${receipt.receiptId}')),
+                    DataCell(Text(receipt.customerName, overflow: TextOverflow.ellipsis)),
+                    DataCell(Text(receipt.issuedAt == null
+                        ? '—'
+                        : _formatShortDate(receipt.issuedAt!))),
+                    DataCell(Text(_formatCurrency(receipt.totalAmount))),
+                    DataCell(Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(status, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+                    )),
+                  ]);
+                }).toList(),
               ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildLowStockBanner(DashboardData data) {
-    final message = data.lowStockCount == 0
-        ? 'Inventory levels are healthy.'
-        : 'You have ${data.lowStockCount} low stock '
-              '${data.lowStockCount == 1 ? 'item' : 'items'}.';
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 17),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF6EDE3),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _bronze.withValues(alpha: 0.12)),
+  Widget _buildCategoryPerformanceSection(List<CategoryPerformanceMetric> categories) {
+    return _buildContentSectionContainer(
+      title: 'Category Performance',
+      subtitle: 'Revenue and completed preorder activity by category',
+      child: categories.isEmpty
+          ? _buildEmptySection(
+              icon: Icons.category_outlined,
+              message: 'No completed category sales are available.',
+            )
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: ConstrainedBox(
+                    // Fill the snapshot width when the columns fit, but allow
+                    // horizontal scrolling if a narrow window needs more room.
+                    constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                    
+child: DataTable(
+  horizontalMargin: 10,
+  columnSpacing: 18,
+  headingRowHeight: 46,
+  dataRowMinHeight: 48,
+  dataRowMaxHeight: 58,
+  headingRowColor: const WidgetStatePropertyAll(
+    Color(0xFFFBF8F5),
+  ),
+  columns: const [
+    DataColumn(label: Text('Category')),
+    DataColumn(label: Text('Total Revenue')),
+    DataColumn(
+      columnWidth: FixedColumnWidth(100),
+      label: Center(child: Text('Units Sold')),
+    ),
+    DataColumn(
+      columnWidth: FixedColumnWidth(130),
+      label: Center(child: Text('Total Pre-orders')),
+    ),
+  ],
+  rows: categories.map((category) => DataRow(
+    cells: [
+      DataCell(
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 150),
+          child: Text(
+            category.name,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final copy = Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.75),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.lightbulb_outline_rounded,
-                  color: _bronze,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      message,
-                      style: const TextStyle(
-                        color: _ink,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      data.lowStockCount == 0
-                          ? 'Continue monitoring catalog movement.'
-                          : 'Please restock to avoid running out of inventory.',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-
-          final button = FilledButton(
-            onPressed: widget.onViewProducts,
-            style: FilledButton.styleFrom(
-              backgroundColor: _darkBrown,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(11),
-              ),
-            ),
-            child: const Text(
-              'View Low Stock',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
-            ),
-          );
-
-          if (constraints.maxWidth < 620) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [copy, const SizedBox(height: 15), button],
-            );
-          }
-          return Row(
-            children: [
-              Expanded(child: copy),
-              const SizedBox(width: 20),
-              button,
-            ],
-          );
-        },
+      DataCell(Text(_formatCurrency(category.revenue))),
+      DataCell(
+        SizedBox(
+          width: double.infinity,
+          child: Center(
+            child: Text('${category.unitsSold}'),
+          ),
+        ),
       ),
+      DataCell(
+        SizedBox(
+          width: double.infinity,
+          child: Center(
+            child: Text('${category.preorderCount}'),
+          ),
+        ),
+      ),
+    ],
+  )).toList(),
+),
+
+                  ),
+                );
+              },
+            ),
     );
   }
+
+
+Widget _buildStockOverview(DashboardData data) {
+  return Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(24),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      boxShadow: [
+        BoxShadow(
+          color: _ink.withValues(alpha: 0.025),
+          blurRadius: 18,
+          offset: const Offset(0, 6),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Card title
+        Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFBF8F5),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: const Icon(
+                Icons.inventory_2_outlined,
+                color: _darkBrown,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Stock Overview',
+              style: TextStyle(
+                color: _ink,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 22),
+
+        // Total stock count
+        Text(
+          data.totalStockCount.toString(),
+          style: const TextStyle(
+            color: _ink,
+            fontSize: 34,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -1,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Total units currently in stock',
+          style: TextStyle(
+            color: Colors.grey.shade600,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+
+        const SizedBox(height: 20),
+        Divider(
+          color: Colors.grey.shade200,
+          height: 1,
+        ),
+        const SizedBox(height: 16),
+
+        // Bottom action row
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final action = FilledButton.icon(
+              onPressed: widget.onViewProducts,
+              icon: const Icon(
+                Icons.arrow_forward_rounded,
+                size: 16,
+              ),
+              label: const Text(
+                'View Stock',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: _darkBrown,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 13,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            );
+
+            if (constraints.maxWidth < 420) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Manage your furniture inventory',
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: action,
+                  ),
+                ],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Manage your furniture inventory',
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                action,
+              ],
+            );
+          },
+        ),
+      ],
+    ),
+  );
+}
+
 
   Widget _buildPreorderStatusSection(PreorderSummary stats) {
     return _buildContentSectionContainer(
@@ -1346,6 +1699,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required String title,
     required String subtitle,
     required Widget child,
+    Widget? trailing,
   }) {
     return Container(
       width: double.infinity,
@@ -1364,14 +1718,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: _ink,
-              letterSpacing: -0.2,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: _ink,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              if (trailing != null) trailing,
+            ],
           ),
           const SizedBox(height: 5),
           Text(
@@ -1556,7 +1918,10 @@ class DashboardData {
   final List<TopPreorderItem> topPreorders;
   final List<FurnitureStockAlert> stockAlerts;
   final List<DailyPreorderActivity> weeklyActivity;
+  final List<DailyRevenueMetric> weeklyRevenue;
   final List<RecentReceiptMetric> recentReceipts;
+  final List<CategoryPerformanceMetric> categoryPerformance;
+  final TopFurnitureRevenueMetric topFurniture;
 
   const DashboardData({
     required this.preorderStats,
@@ -1575,7 +1940,10 @@ class DashboardData {
     required this.topPreorders,
     required this.stockAlerts,
     required this.weeklyActivity,
+    required this.weeklyRevenue,
     required this.recentReceipts,
+    required this.categoryPerformance,
+    required this.topFurniture,
   });
 
   factory DashboardData.empty() {
@@ -1600,6 +1968,7 @@ class DashboardData {
       categoryStock: const [],
       topPreorders: const [],
       stockAlerts: const [],
+      weeklyRevenue: List.generate(7, (index) => DailyRevenueMetric(date: today.subtract(Duration(days: 6 - index)), amount: 0)),
       weeklyActivity: List.generate(
         7,
         (index) => DailyPreorderActivity(
@@ -1608,6 +1977,12 @@ class DashboardData {
         ),
       ),
       recentReceipts: const [],
+      categoryPerformance: const [],
+      topFurniture: const TopFurnitureRevenueMetric(
+        name: '',
+        revenue: 0,
+        weeklyRevenue: [0, 0, 0, 0, 0, 0, 0],
+      ),
     );
   }
 
@@ -1632,6 +2007,25 @@ class DashboardData {
       } else if (_isCompletedStatus(status)) {
         completedCount++;
         completedRevenue += _asDouble(preorder['total_price']);
+      } else if (_isCancelledStatus(status)) {
+        cancelledCount++;
+      }
+    }
+
+    // The donut is an order-slip breakdown, so count statuses from RECEIPT
+    // rows rather than counting every preorder record in the database.
+    pendingCount = 0;
+    completedCount = 0;
+    cancelledCount = 0;
+    completedRevenue = 0;
+    for (final receipt in receiptRows) {
+      final preorder = _relationMap(receipt['PREORDER'] ?? receipt['preorder']);
+      final status = _normalizeStatus(preorder?['status']);
+      if (status == 'pending') {
+        pendingCount++;
+      } else if (_isCompletedStatus(status)) {
+        completedCount++;
+        completedRevenue += _asDouble(preorder?['total_price']);
       } else if (_isCancelledStatus(status)) {
         cancelledCount++;
       }
@@ -1743,46 +2137,124 @@ class DashboardData {
             return left.name.compareTo(right.name);
           });
 
+    final completedCategoryRevenue = <String, double>{};
+    final completedCategoryUnits = <String, int>{};
+    final completedCategoryPreorders = <String, Set<String>>{};
+    final furnitureRevenue = <String, double>{};
+    final furnitureDailyRevenue = <String, Map<DateTime, double>>{};
     final today = _dateOnly(DateTime.now());
-    // Pre-create all seven dates so days without receipts still render as
-    // zero-height bars instead of disappearing from the activity graph.
+    final weekDates = List.generate(
+      7,
+      (index) => today.subtract(Duration(days: 6 - index)),
+    );
+
+    for (final item in preorderItemRows) {
+      final preorder = _relationMap(item['PREORDER'] ?? item['preorder']);
+      if (!_isCompletedStatus(_normalizeStatus(preorder?['status']))) continue;
+
+      final directFurniture = _relationMap(item['FURNITURE'] ?? item['furniture']);
+      final variant = _relationMap(item['VARIANT'] ?? item['variant']);
+      final variantFurniture = _relationMap(variant?['FURNITURE'] ?? variant?['furniture']);
+      final furniture = directFurniture ?? variantFurniture;
+      final furnitureName = furniture?['furniture_name']?.toString().trim().isNotEmpty == true
+          ? furniture!['furniture_name'].toString().trim()
+          : 'Unknown Furniture';
+      final quantity = _asInt(item['quantity']);
+      final lineRevenue = quantity * _asDouble(furniture?['price']);
+      final categoryName = categoryById['${furniture?['category_id']}'] ?? 'Uncategorized';
+
+      furnitureRevenue.update(furnitureName, (value) => value + lineRevenue,
+          ifAbsent: () => lineRevenue);
+      completedCategoryRevenue.update(categoryName, (value) => value + lineRevenue,
+          ifAbsent: () => lineRevenue);
+      completedCategoryUnits.update(categoryName, (value) => value + quantity,
+          ifAbsent: () => quantity);
+      final preorderId = (item['preorder_id'] ?? preorder?['preorder_id'] ?? '').toString();
+      completedCategoryPreorders.putIfAbsent(categoryName, () => <String>{});
+      if (preorderId.isNotEmpty) completedCategoryPreorders[categoryName]!.add(preorderId);
+
+      final placedAt = DateTime.tryParse(preorder?['preordered_at']?.toString() ?? '')?.toLocal();
+      if (placedAt != null) {
+        final date = _dateOnly(placedAt);
+        furnitureDailyRevenue.putIfAbsent(furnitureName, () => <DateTime, double>{});
+        if (weekDates.contains(date)) {
+          furnitureDailyRevenue[furnitureName]!.update(date, (value) => value + lineRevenue,
+              ifAbsent: () => lineRevenue);
+        }
+      }
+    }
+
+    final categoryPerformance = completedCategoryRevenue.entries.map((entry) {
+      return CategoryPerformanceMetric(
+        name: entry.key,
+        revenue: entry.value,
+        unitsSold: completedCategoryUnits[entry.key] ?? 0,
+        preorderCount: completedCategoryPreorders[entry.key]?.length ?? 0,
+      );
+    }).toList()
+      ..sort((a, b) => b.revenue.compareTo(a.revenue));
+
+    final topFurnitureEntry = furnitureRevenue.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final topFurnitureName = topFurnitureEntry.isEmpty ? '' : topFurnitureEntry.first.key;
+    final topFurniture = TopFurnitureRevenueMetric(
+      name: topFurnitureName,
+      revenue: topFurnitureEntry.isEmpty ? 0 : topFurnitureEntry.first.value,
+      weeklyRevenue: [
+        for (final date in weekDates)
+          furnitureDailyRevenue[topFurnitureName]?[date] ?? 0,
+      ],
+    );
+
+    // The activity chart counts completed receipts only and attaches the
+    // matching completed preorder amount to the receipt's issue date.
     final weeklyCounts = <DateTime, int>{
-      for (var index = 0; index < 7; index++)
-        today.subtract(Duration(days: index)): 0,
+      for (final date in weekDates) date: 0,
+    };
+    final revenueByDate = <DateTime, double>{
+      for (final date in weekDates) date: 0.0,
     };
 
     for (final receipt in receiptRows) {
-      final issuedAt = DateTime.tryParse(
-        receipt['issued_at']?.toString() ?? '',
-      )?.toLocal();
+      final preorder = _relationMap(receipt['PREORDER'] ?? receipt['preorder']);
+      if (!_isCompletedStatus(_normalizeStatus(preorder?['status']))) continue;
+      final issuedAt = DateTime.tryParse(receipt['issued_at']?.toString() ?? '')?.toLocal();
       if (issuedAt == null) continue;
-
       final date = _dateOnly(issuedAt);
       if (!weeklyCounts.containsKey(date)) continue;
       weeklyCounts[date] = (weeklyCounts[date] ?? 0) + 1;
+      revenueByDate[date] = (revenueByDate[date] ?? 0) + _asDouble(preorder?['total_price']);
     }
 
-    final weeklyActivity = List.generate(7, (index) {
+    final weeklyRevenue = List.generate(7, (index) {
       final date = today.subtract(Duration(days: 6 - index));
-      return DailyPreorderActivity(date: date, count: weeklyCounts[date] ?? 0);
+      return DailyRevenueMetric(date: date, amount: revenueByDate[date] ?? 0);
     });
-    final recentReceipts =
-        receiptRows.map((receipt) {
-          final preorder = _relationMap(
-            receipt['PREORDER'] ?? receipt['preorder'],
-          );
-          return RecentReceiptMetric(
-            issuedAt: DateTime.tryParse(
-              receipt['issued_at']?.toString() ?? '',
-            )?.toLocal(),
-            status: _normalizeStatus(preorder?['status']),
-          );
-        }).toList()..sort((left, right) {
-          if (left.issuedAt == null && right.issuedAt == null) return 0;
-          if (left.issuedAt == null) return 1;
-          if (right.issuedAt == null) return -1;
-          return right.issuedAt!.compareTo(left.issuedAt!);
-        });
+
+    final weeklyActivity = List.generate(7, (index) {
+      final date = weekDates[index];
+      return DailyPreorderActivity(
+        date: date,
+        count: weeklyCounts[date] ?? 0,
+        amount: revenueByDate[date] ?? 0,
+      );
+    });
+    final recentReceipts = receiptRows.map((receipt) {
+      final preorder = _relationMap(receipt['PREORDER'] ?? receipt['preorder']);
+      final customer = _relationMap(preorder?['CUSTOMER'] ?? preorder?['customer']);
+      return RecentReceiptMetric(
+        receiptId: (receipt['receipt_id'] ?? '').toString(),
+        customerName: customer?['full_name']?.toString() ?? 'Unknown Customer',
+        issuedAt: DateTime.tryParse(receipt['issued_at']?.toString() ?? '')?.toLocal(),
+        totalAmount: _asDouble(preorder?['total_price']),
+        status: _normalizeStatus(preorder?['status']),
+      );
+    }).toList()..sort((left, right) {
+      if (left.issuedAt == null && right.issuedAt == null) return 0;
+      if (left.issuedAt == null) return 1;
+      if (right.issuedAt == null) return -1;
+      return right.issuedAt!.compareTo(left.issuedAt!);
+    });
     final activitySparkline = weeklyActivity
         .map((activity) => activity.count.toDouble())
         .toList();
@@ -1816,7 +2288,10 @@ class DashboardData {
       topPreorders: topPreorders.take(5).toList(),
       stockAlerts: stockAlerts.take(5).toList(),
       weeklyActivity: weeklyActivity,
+      weeklyRevenue: weeklyRevenue,
       recentReceipts: recentReceipts.take(5).toList(),
+      categoryPerformance: categoryPerformance.take(8).toList(),
+      topFurniture: topFurniture,
     );
   }
 }
@@ -2045,7 +2520,7 @@ class _RenderEqualHeightRow extends RenderBox
   }
 }
 
-/// Scales the seven receipt counts against the busiest day in the period.
+/// Scales completed-slip revenue across the last seven days.
 class _WeeklyActivityChart extends StatelessWidget {
   static const List<String> _dayNames = [
     'MON',
@@ -2063,9 +2538,9 @@ class _WeeklyActivityChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maximum = activity.fold<int>(
+    final maximum = activity.fold<double>(
       0,
-      (current, day) => math.max(current, day.count),
+      (current, day) => math.max(current, day.amount),
     );
 
     return Row(
@@ -2073,13 +2548,19 @@ class _WeeklyActivityChart extends StatelessWidget {
       children: [
         for (var index = 0; index < activity.length; index++) ...[
           Expanded(
-            child: Semantics(
-              label:
-                  '${_dayNames[activity[index].date.weekday - 1]}, ${activity[index].count} preorder submissions',
-              child: Column(
-                children: [
+            child: Tooltip(
+              message: '${_dayNames[activity[index].date.weekday - 1]}\n'
+                  '${activity[index].count} completed slips\n'
+                  'Earned: ₱${activity[index].amount.toStringAsFixed(2)}',
+              child: Semantics(
+                label:
+                    '${_dayNames[activity[index].date.weekday - 1]}, ${activity[index].count} completed slips, earned ${activity[index].amount.toStringAsFixed(2)} pesos',
+                child: Column(
+                  children: [
                   Text(
-                    '${activity[index].count}',
+                    activity[index].amount >= 1000
+                        ? '₱${(activity[index].amount / 1000).toStringAsFixed(1)}k'
+                        : '₱${activity[index].amount.toStringAsFixed(0)}',
                     style: const TextStyle(
                       color: Color(0xFF7A6865),
                       fontSize: 11,
@@ -2092,7 +2573,7 @@ class _WeeklyActivityChart extends StatelessWidget {
                       builder: (context, constraints) {
                         final factor = maximum == 0
                             ? 0.04
-                            : activity[index].count / maximum;
+                            : activity[index].amount / maximum;
                         return Align(
                           alignment: Alignment.bottomCenter,
                           child: AnimatedContainer(
@@ -2124,11 +2605,58 @@ class _WeeklyActivityChart extends StatelessWidget {
                       letterSpacing: 0.4,
                     ),
                   ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
           if (index != activity.length - 1) const SizedBox(width: 8),
+        ],
+      ],
+    );
+  }
+}
+
+/// Seven-day revenue chart based only on completed (paid) pre-orders.
+class _WeeklyRevenueChart extends StatelessWidget {
+  final List<DailyRevenueMetric> activity;
+  const _WeeklyRevenueChart({required this.activity});
+
+  @override
+  Widget build(BuildContext context) {
+    final maximum = activity.fold<double>(0, (value, day) => math.max(value, day.amount));
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < activity.length; i++) ...[
+          Expanded(
+            child: Column(
+              children: [
+                Text(activity[i].amount.toStringAsFixed(0), style: const TextStyle(color: Color(0xFF7A6865), fontSize: 10, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    final factor = maximum == 0 ? 0.04 : activity[i].amount / maximum;
+                    return Align(
+                      alignment: Alignment.bottomCenter,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        width: 24,
+                        height: math.max(6, constraints.maxHeight * factor),
+                        decoration: BoxDecoration(
+                          color: i == activity.length - 1 ? const Color(0xFF438A5E) : const Color(0xFFBBD4C2),
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+                const SizedBox(height: 10),
+                Text(['MON','TUE','WED','THU','FRI','SAT','SUN'][activity[i].date.weekday - 1], style: TextStyle(color: Colors.grey.shade500, fontSize: 9, fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+          if (i != activity.length - 1) const SizedBox(width: 8),
         ],
       ],
     );
@@ -2152,7 +2680,7 @@ String _normalizeStatus(dynamic value) {
 }
 
 bool _isCompletedStatus(String status) {
-  return status == 'completed' || status == 'approved' || status == 'confirmed';
+  return status == 'completed';
 }
 
 bool _isCancelledStatus(String status) {

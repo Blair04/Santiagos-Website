@@ -33,6 +33,12 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
         onViewProducts: () {
           if (mounted) setState(() => _selectedIndex = 2);
         },
+        onViewReceipts: () {
+          if (mounted) setState(() => _selectedIndex = 1);
+        },
+        onViewSales: () {
+          if (mounted) setState(() => _selectedIndex = 4);
+        },
       ),
 
       ManageReceipt(),
