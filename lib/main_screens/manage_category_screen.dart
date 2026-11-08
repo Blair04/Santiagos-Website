@@ -185,7 +185,7 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
       await _fetchCategories();
     } catch (e) {
       _showSnackBar(
-        'Error deleting category',
+        'Cannot delete category "$name". It may have associated products.',
         isError: true,
       );
     }
