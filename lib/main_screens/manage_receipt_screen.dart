@@ -1,4 +1,3 @@
-import 'dart:math' as math; 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -13,82 +12,67 @@ class ManageReceipt extends StatefulWidget {
   State<ManageReceipt> createState() => _ManageReceiptState();
 }
 
-class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateMixin {
+class _ManageReceiptState extends State<ManageReceipt> {
   final TextEditingController _searchController = TextEditingController();
-  late AnimationController _refreshIconController; 
 
   String query = "";
   String selectedTab = 'Pending';
 
   List<Map<String, dynamic>> _allReceipts = [];
-  bool _isLoading = true;
-  bool _isActionLoading = false; 
-  bool _isAscending = true;      
+  late Future<List<Map<String, dynamic>>> _future;
+  bool _isActionLoading = false;
+  bool _isAscending = true;
+  String _sortColumn = 'id';
 
   @override
   void initState() {
     super.initState();
-    _refreshIconController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
-    _fetchSupabaseData();
+    _future = _fetchReceipts();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
-    _refreshIconController.dispose();
     super.dispose();
   }
 
-  Future<void> _fetchSupabaseData() async {
-    try {
-      if (mounted && !_isLoading) {
-        _refreshIconController.repeat();
-      }
+  void _refresh() {
+    setState(() {
+      _searchController.clear();
+      query = "";
+      _future = _fetchReceipts();
+    });
+  }
 
-      final response = await _supabase.from('RECEIPT').select('''
-        receipt_id,
-        issued_at,
-        preorder_id,
-        message,
-        PREORDER (
-          status,
-          customer_id,
-          total_price,
-          CUSTOMER (
-            gmail,
-            full_name,
-            phone
-          ),
-          PREORDER_ITEMS (
-            quantity,
-            furniture_id,
-            FURNITURE (
-              furniture_name,
-              price
-            )
+  Future<List<Map<String, dynamic>>> _fetchReceipts() async {
+    final response = await _supabase.from('RECEIPT').select('''
+      receipt_id,
+      issued_at,
+      preorder_id,
+      message,
+      PREORDER (
+        status,
+        customer_id,
+        total_price,
+        CUSTOMER (
+          gmail,
+          full_name,
+          phone
+        ),
+        PREORDER_ITEMS (
+          quantity,
+          furniture_id,
+          FURNITURE (
+            furniture_name,
+            price
           )
         )
-      ''');
+      )
+    ''');
 
-      if (mounted) {
-        setState(() {
-          _allReceipts = List<Map<String, dynamic>>.from(response);
-          _isLoading = false;
-        });
-        _refreshIconController.forward(from: _refreshIconController.value).then((_) {
-          _refreshIconController.reset();
-        });
-      }
-    } catch (e) {
-      debugPrint("❌ Fetch Error: $e");
-      if (mounted) {
-        setState(() => _isLoading = false);
-        _refreshIconController.reset();
-      }
-    }
+    final receipts = List<Map<String, dynamic>>.from(response);
+    _allReceipts = receipts;
+    return receipts;
   }
 
   Future<void> _showDenyDialog(dynamic preorderId, dynamic receiptId) async {
@@ -291,8 +275,8 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
         setState(() {
           selectedTab = newStatus;
           _isActionLoading = false;
+          _future = _fetchReceipts();
         });
-        await _fetchSupabaseData();
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -321,7 +305,57 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
     }
   }
 
+  String _getCustomerName(Map<String, dynamic> receipt) {
+    final dynamic preorderRaw = receipt['PREORDER'] ?? receipt['preorder'];
+    Map<String, dynamic>? preorder;
+    if (preorderRaw is List && preorderRaw.isNotEmpty) {
+      preorder = preorderRaw.first;
+    } else if (preorderRaw is Map<String, dynamic>) {
+      preorder = preorderRaw;
+    }
+    final customerData =
+        preorder != null ? (preorder['CUSTOMER'] ?? preorder['customer']) : null;
+    return (customerData != null ? (customerData['full_name'] ?? '') : '')
+        .toString()
+        .toLowerCase();
+  }
+
+  Widget _sortHeader(String label, String column) {
+    final bool active = _sortColumn == column;
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () {
+          setState(() {
+            if (_sortColumn == column) {
+              _isAscending = !_isAscending;
+            } else {
+              _sortColumn = column;
+              _isAscending = true;
+            }
+          });
+        },
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            HeaderText(label),
+            const SizedBox(width: 4),
+            Icon(
+              active
+                  ? (_isAscending ? Icons.arrow_drop_up : Icons.arrow_drop_down)
+                  : Icons.unfold_more,
+              size: 18,
+              color: active ? Colors.brown : Colors.brown.withOpacity(0.35),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   List<Map<String, dynamic>> _getFilteredReceiptsList() {
+    final String searchText = query.trim().toLowerCase();
+
     final filtered = _allReceipts.where((receipt) {
       final dynamic preorderRaw = receipt['PREORDER'] ?? receipt['preorder'];
       Map<String, dynamic>? preorder;
@@ -333,16 +367,49 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
       }
 
       final status = preorder?['status'] ?? 'Pending';
-      final matchesSearch = receipt['receipt_id'].toString().contains(query);
+
+      final dynamic customerData =
+          preorder != null ? (preorder['CUSTOMER'] ?? preorder['customer']) : null;
+      final String customerName =
+          (customerData != null ? (customerData['full_name'] ?? '') : '')
+              .toString()
+              .toLowerCase();
+      final String customerEmail =
+          (customerData != null ? (customerData['gmail'] ?? '') : '')
+              .toString()
+              .toLowerCase();
+      final String customerPhone =
+          (customerData != null ? (customerData['phone'] ?? '') : '')
+              .toString()
+              .toLowerCase();
+
+      final matchesSearch = searchText.isEmpty ||
+          receipt['receipt_id'].toString().toLowerCase().contains(searchText) ||
+          customerName.contains(searchText) ||
+          customerEmail.contains(searchText) ||
+          customerPhone.contains(searchText);
       final matchesTab = status.toString().toLowerCase() == selectedTab.toLowerCase();
 
       return matchesSearch && matchesTab;
     }).toList();
 
     filtered.sort((a, b) {
-      final idA = int.tryParse(a['receipt_id'].toString()) ?? 0;
-      final idB = int.tryParse(b['receipt_id'].toString()) ?? 0;
-      return _isAscending ? idA.compareTo(idB) : idB.compareTo(idA);
+      int result;
+      switch (_sortColumn) {
+        case 'date':
+          final dateA = DateTime.tryParse(a['issued_at'].toString()) ?? DateTime(1970);
+          final dateB = DateTime.tryParse(b['issued_at'].toString()) ?? DateTime(1970);
+          result = dateA.compareTo(dateB);
+          break;
+        case 'name':
+          result = _getCustomerName(a).compareTo(_getCustomerName(b));
+          break;
+        default:
+          final idA = int.tryParse(a['receipt_id'].toString()) ?? 0;
+          final idB = int.tryParse(b['receipt_id'].toString()) ?? 0;
+          result = idA.compareTo(idB);
+      }
+      return _isAscending ? result : -result;
     });
 
     return filtered;
@@ -665,221 +732,248 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
     );
   }
 
+  Widget _errorView(Object? error) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline_rounded, size: 64, color: Colors.red),
+            const SizedBox(height: 20),
+            const Text(
+              "Couldn't load order slips",
+              style: TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.bold, color: Colors.brown),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              "$error",
+              style: const TextStyle(fontSize: 14, color: Colors.red, height: 1.4),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 28),
+            TextButton.icon(
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+              label: const Text(
+                "Try Again",
+                style: TextStyle(
+                    fontWeight: FontWeight.w600, fontSize: 15, color: Colors.white),
+              ),
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.brown,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final filteredReceipts = _getFilteredReceiptsList();
-
     return Scaffold(
       backgroundColor: const Color.fromRGBO(249, 246, 241, 1.0),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Customer Order Slips',  
-                style: TextStyle(
-                    color: Colors.brown, fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _future,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Colors.brown));
+          }
 
-              const Divider(color: Color(0xFFE0DAD5), thickness: 1, height:1,),
-              const SizedBox(height: 20),
-              
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (value) => setState(() => query = value),
-                      decoration: InputDecoration(
-                        hintText: "Search by Slip ID...",
-                        prefixIcon: const Icon(Icons.search), 
-                        filled: true, fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 15),
-                        border:OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide(color: Colors.brown.withOpacity(0.2))),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), 
-                        borderSide: const BorderSide(color: Colors.brown)),
-                             ),
+          if (snapshot.hasError) {
+            return _errorView(snapshot.error);
+          }
+
+          final filteredReceipts = _getFilteredReceiptsList();
+
+          return RefreshIndicator(
+            color: Colors.brown,
+            onRefresh: () async => _refresh(),
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Customer Order Slips',
+                      style: TextStyle(
+                          color: Colors.brown, fontSize: 24, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 16),
+
+                    const Divider(color: Color(0xFFE0DAD5), thickness: 1, height: 1),
+                    const SizedBox(height: 20),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: (value) => setState(() => query = value),
+                            decoration: InputDecoration(
+                              hintText: "Search Order Slip...",
+                              prefixIcon: const Icon(Icons.search),
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 15),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+                              enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                  borderSide: BorderSide(color: Colors.brown.withOpacity(0.2))),
+                              focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                  borderSide: const BorderSide(color: Colors.brown)),
+                            ),
                           ),
-                       ),
-                       const SizedBox(height: 18, width:16),
-                  Container(
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+                        ),
+                        const SizedBox(width: 16),
+                        Container(
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                  color: Colors.black12,
+                                  blurRadius: 4,
+                                  offset: Offset(0, 2)),
+                            ],
+                          ),
+                          child: IconButton(
+                            icon: const Icon(Icons.refresh, color: Colors.brown),
+                            onPressed: _refresh,
+                            tooltip: "Refresh",
+                          ),
+                        ),
                       ],
                     ),
-                    child: AnimatedBuilder(
-                      animation: _refreshIconController,
-                      builder: (context, child) {
-                        return Transform.rotate(
-                          angle: _refreshIconController.value * 2 * math.pi,
-                          child: child,
-                        );
-                      },
-                      child: IconButton(
-                        icon: const Icon(Icons.refresh, color: Colors.brown),
-                        onPressed: _fetchSupabaseData,
-                        tooltip: "Refresh database data",
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 30),
-              
-              Center(
-                child: Container(
-                  width: double.infinity,
-                  constraints: const BoxConstraints(maxWidth: 1000),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: const [
-                      BoxShadow(
-                          color: Colors.black12,
-                          blurRadius: 10,
-                          offset: Offset(0, 4)),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8.0, left: 16, right: 16),
-                        child: Row(
-                          children: [
-                            _buildChromeTab('Pending'),
-                            _buildChromeTab('Completed'),
-                            _buildChromeTab('Cancelled'),
+                    const SizedBox(height: 30),
+
+                    Center(
+                      child: Container(
+                        width: double.infinity,
+                        constraints: const BoxConstraints(maxWidth: 1000),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: const [
+                            BoxShadow(
+                                color: Colors.black12,
+                                blurRadius: 10,
+                                offset: Offset(0, 4)),
                           ],
                         ),
-                      ),
-
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 14, horizontal: 16),
-                        decoration: const BoxDecoration(
-                          border: Border(
-                              bottom:
-                                  BorderSide(color: Colors.black12, width: 1.5)),
-                        ),
-                        child: Row(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Expanded(
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(8),
-                                onTap: () {
-                                  setState(() {
-                                    _isAscending = !_isAscending;
-                                  });
-                                },
-                                child: Row(
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8.0, left: 16, right: 16),
+                              child: Row(
+                                children: [
+                                  _buildChromeTab('Pending'),
+                                  _buildChromeTab('Completed'),
+                                  _buildChromeTab('Cancelled'),
+                                ],
+                              ),
+                            ),
+
+                            Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                              decoration: const BoxDecoration(
+                                border: Border(
+                                    bottom: BorderSide(color: Colors.black12, width: 1.5)),
+                              ),
+                              child: Row(
+                                children: [
+                                  _sortHeader("ID", 'id'),
+                                  _sortHeader("Date Submitted", 'date'),
+                                  _sortHeader("Customer Name", 'name'),
+                                  const Expanded(child: HeaderText("Total Items")),
+                                  const Expanded(child: HeaderText("Status")),
+                                  const Expanded(child: HeaderText("Action")),
+                                ],
+                              ),
+                            ),
+
+                            if (filteredReceipts.isEmpty)
+                              Padding(
+                                padding: const EdgeInsets.all(50.0),
+                                child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    const HeaderText("ID"),
-                                    const SizedBox(width: 4),
-                                    Icon(
-                                      _isAscending ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                                      size: 18,
-                                      color: Colors.brown,
+                                    Icon(Icons.assignment_turned_in_outlined,
+                                        size: 48, color: Colors.grey.shade400),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      _getEmptyMessage(),
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        color: Colors.grey.shade600,
+                                        fontWeight: FontWeight.w500,
+                                      ),
                                     ),
                                   ],
                                 ),
+                              )
+                            else
+                              Column(
+                                children: filteredReceipts.map((receipt) {
+                                  final dynamic preorderRaw =
+                                      receipt['PREORDER'] ?? receipt['preorder'];
+                                  Map<String, dynamic>? preorder;
+
+                                  if (preorderRaw is List && preorderRaw.isNotEmpty) {
+                                    preorder = preorderRaw.first;
+                                  } else if (preorderRaw is Map<String, dynamic>) {
+                                    preorder = preorderRaw;
+                                  }
+
+                                  final customerData = preorder != null
+                                      ? (preorder['CUSTOMER'] ?? preorder['customer'])
+                                      : null;
+                                  final String name = customerData != null
+                                      ? (customerData['full_name'] ?? 'N/A')
+                                      : 'N/A';
+                                  int totalQuantity = 0;
+
+                                  if (preorder != null) {
+                                    final List itemsList = preorder['PREORDER_ITEMS'] ??
+                                        preorder['preorder_items'] ??
+                                        [];
+                                    for (var i in itemsList) {
+                                      totalQuantity += (i['quantity'] ?? 0) as int;
+                                    }
+                                  }
+
+                                  return tableRow(
+                                    receipt['receipt_id'].toString(),
+                                    receipt['issued_at'].toString().substring(0, 10),
+                                    name,
+                                    totalQuantity.toString(),
+                                    preorder != null
+                                        ? (preorder['status'] ?? 'Pending')
+                                        : 'Pending',
+                                    onView: () => _showReceiptDetails(receipt, preorder!),
+                                  );
+                                }).toList(),
                               ),
-                            ),
-                            const Expanded(child: HeaderText("Date Submitted")),
-                            const Expanded(child: HeaderText("Customer Name")),
-                            const Expanded(child: HeaderText("Total Items")),
-                            const Expanded(child: HeaderText("Status")),
-                            const Expanded(child: HeaderText("Action")),
                           ],
                         ),
                       ),
-
-                      if (_isLoading)
-                        const Padding(
-                          padding: EdgeInsets.all(40.0),
-                          child: CircularProgressIndicator(color: Colors.brown),
-                        )
-                      else if (filteredReceipts.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.all(50.0),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.assignment_turned_in_outlined,
-                                  size: 48, color: Colors.grey.shade400),
-                              const SizedBox(height: 12),
-                              Text(
-                                _getEmptyMessage(),
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  color: Colors.grey.shade600,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      else
-                        Column(
-                          children: filteredReceipts.map((receipt) {
-                            final dynamic preorderRaw =
-                                receipt['PREORDER'] ?? receipt['preorder'];
-                            Map<String, dynamic>? preorder;
-
-                            if (preorderRaw is List && preorderRaw.isNotEmpty) {
-                              preorder = preorderRaw.first;
-                            } else if (preorderRaw is Map<String, dynamic>) {
-                              preorder = preorderRaw;
-                            }
-
-                            final customerData = preorder != null
-                                ? (preorder['CUSTOMER'] ?? preorder['customer'])
-                                : null;
-                            final String name = customerData != null
-                                ? (customerData['full_name'] ?? 'N/A')
-                                : 'N/A';
-                            int totalQuantity = 0;
-
-                            if (preorder != null) {
-                              final List itemsList =
-                                  preorder['PREORDER_ITEMS'] ??
-                                      preorder['preorder_items'] ??
-                                      [];
-                              for (var i in itemsList) {
-                                totalQuantity += (i['quantity'] ?? 0) as int;
-                              }
-                            }
-
-                            return tableRow(
-                              receipt['receipt_id'].toString(),
-                              receipt['issued_at'].toString().substring(0, 10),
-                              name,
-                              totalQuantity.toString(),
-                              preorder != null
-                                  ? (preorder['status'] ?? 'Pending')
-                                  : 'Pending',
-                              onView: () =>
-                                  _showReceiptDetails(receipt, preorder!),
-                            );
-                          }).toList(),
-                        ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -906,8 +1000,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
           Expanded(
             child: Center(
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
                   color: status.toLowerCase() == 'pending'
                       ? const Color(0xFFEBE3D5)
@@ -936,8 +1029,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                 onTap: onView,
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF6F4F0),
                     borderRadius: BorderRadius.circular(20),
@@ -1037,8 +1129,7 @@ class HeaderText extends StatelessWidget {
     return Text(
       text,
       textAlign: TextAlign.center,
-      style: const TextStyle(
-          fontWeight: FontWeight.bold, color: Colors.brown),
+      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.brown),
     );
   }
 }
