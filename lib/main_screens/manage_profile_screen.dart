@@ -280,7 +280,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Manage Profile',
+                      'Manage Account',
                       style: TextStyle(
                         color: Colors.brown,
                         fontSize: 28,
@@ -290,7 +290,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Keep the administrator photo, email, and password up to date.',
+                      'Keep the account logo, email, and password up to date.',
                       style: TextStyle(
                         color: Colors.grey.shade600,
                         fontSize: 15,
@@ -342,7 +342,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
 
   Widget _buildProfileCard() {
     return _buildSectionCard(
-      title: 'Profile Photo',
+      title: 'Business Logo',
       subtitle: 'JPG, PNG, or WebP up to 5 MB',
       child: Column(
         children: [
@@ -370,7 +370,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
           const SizedBox(height: 20),
 
           const Text(
-            'Administrator',
+            'Manager Account',
             style: TextStyle(
               color: _ink,
               fontSize: 19,
@@ -434,7 +434,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   Widget _buildEmailCard() {
     return _buildSectionCard(
       title: 'Email Address',
-      subtitle: 'Update the address used to sign in as administrator.',
+      subtitle: 'Update the address used to sign in as manager.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
