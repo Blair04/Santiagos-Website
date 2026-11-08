@@ -102,7 +102,23 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
     }
   }
 
+  // Checks if a category name already exists (case-insensitive, ignores
+  // extra spaces). Use excludeId when editing so it doesn't clash with itself.
+  bool _categoryExists(String name, {int? excludeId}) {
+    final normalized = name.trim().toLowerCase();
+
+    return _categories.any(
+      (c) =>
+          c.name.trim().toLowerCase() == normalized && c.id != excludeId,
+    );
+  }
+
   Future<void> _addCategory(String name) async {
+    if (_categoryExists(name)) {
+      _showSnackBar('Category "$name" already exists', isError: true);
+      return;
+    }
+
     try {
       await _supabase.from('CATEGORY').insert({
         'category_name': name,
@@ -110,6 +126,13 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
 
       _showSnackBar('Category "$name" added!');
       await _fetchCategories();
+    } on PostgrestException catch (e) {
+      _showSnackBar(
+        e.code == '23505'
+            ? 'Category "$name" already exists'
+            : 'Error adding category',
+        isError: true,
+      );
     } catch (e) {
       _showSnackBar(
         'Error adding category',
@@ -119,6 +142,11 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
   }
 
   Future<void> _updateCategory(int id, String name) async {
+    if (_categoryExists(name, excludeId: id)) {
+      _showSnackBar('Category "$name" already exists', isError: true);
+      return;
+    }
+
     try {
       await _supabase
           .from('CATEGORY')
@@ -129,6 +157,13 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
 
       _showSnackBar('Category updated!');
       await _fetchCategories();
+    } on PostgrestException catch (e) {
+      _showSnackBar(
+        e.code == '23505'
+            ? 'Category "$name" already exists'
+            : 'Error updating category',
+        isError: true,
+      );
     } catch (e) {
       _showSnackBar(
         'Error updating category',
@@ -184,11 +219,11 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
           child: Row(
             children: [
               const Text(
-                'Manage Categories', 
+                'Manage Categories',
                 style: TextStyle(
                   color: _brown,
-                  fontSize: 24, 
-                  fontWeight: FontWeight.bold, 
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ],
@@ -203,87 +238,83 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
           ),
         ),
 
-      
-Padding(
-  padding: const EdgeInsets.symmetric(horizontal: 32),
-  child: Row(
-    children: [
-      // Search Bar
-      Expanded(
-        child: SizedBox(
-          height: 52,
-          child: TextField(
-            controller: _searchController,
-            onChanged: (v) => setState(() => _searchQuery = v),
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: "Search Category...",
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-              ),
-              filled: true,
-              fillColor: Colors.white,
-
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(30),
-              ),
-
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(30),
-                borderSide: BorderSide(
-                  color: Colors.brown.withOpacity(0.2),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Row(
+            children: [
+              // Search Bar
+              Expanded(
+                child: SizedBox(
+                  height: 52,
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.search),
+                      hintText: "Search Category...",
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: BorderSide(
+                          color: Colors.brown.withOpacity(0.2),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(
+                          color: Colors.brown,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
 
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(30),
-                borderSide: const BorderSide(
-                  color: Colors.brown,
-                  width: 1,
+              const SizedBox(width: 16),
+
+              SizedBox(
+                height: 46,
+                width: 165,
+                child: ElevatedButton.icon(
+                  onPressed: () => _showCategoryDialog(),
+                  style: ElevatedButton.styleFrom(
+                    elevation: 0,
+                    backgroundColor: const Color(0xFF6D4C41),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: const Icon(
+                    Icons.add,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  label: const Text(
+                    "Add New Category",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
-      ),
 
-      const SizedBox(width: 16),
-
-      SizedBox(
-        height: 46,
-        width: 165,
-        child: ElevatedButton.icon(
-          onPressed: () => _showCategoryDialog(),
-          style: ElevatedButton.styleFrom(
-            elevation: 0,
-            backgroundColor: const Color(0xFF6D4C41),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 14,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
-          icon: const Icon(
-            Icons.add,
-            color: Colors.white,
-            size: 18,
-          ),
-          label: const Text(
-            "Add New Category",
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w500,
-              fontSize: 13,
-            ),
-          ),
-        ),
-      ),
-    ],
-  ),
-),
-
-const SizedBox(height: 15),
+        const SizedBox(height: 15),
 
         // CATEGORY COUNT
         Padding(
@@ -481,9 +512,7 @@ const SizedBox(height: 15),
       builder: (ctx) => AlertDialog(
         backgroundColor: _white,
         title: Text(
-          existing == null
-              ? 'Add New Category'
-              : 'Edit Category',
+          existing == null ? 'Add New Category' : 'Edit Category',
           style: const TextStyle(
             color: _brown,
             fontWeight: FontWeight.bold,
@@ -493,10 +522,15 @@ const SizedBox(height: 15),
           key: formKey,
           child: TextFormField(
             controller: nameCtrl,
-            validator: (v) =>
-                v == null || v.trim().isEmpty
-                    ? 'Required'
-                    : null,
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) {
+                return 'Required';
+              }
+              if (_categoryExists(v, excludeId: existing?.id)) {
+                return 'Category already exists';
+              }
+              return null;
+            },
             decoration: InputDecoration(
               hintText: 'Category Name',
               filled: true,
@@ -564,8 +598,7 @@ const SizedBox(height: 15),
             ),
             actions: [
               TextButton(
-                onPressed: () =>
-                    Navigator.pop(context, false),
+                onPressed: () => Navigator.pop(context, false),
                 child: const Text(
                   'Cancel',
                   style: TextStyle(
@@ -578,8 +611,7 @@ const SizedBox(height: 15),
                   backgroundColor: Colors.redAccent,
                   foregroundColor: _white,
                 ),
-                onPressed: () =>
-                    Navigator.pop(context, true),
+                onPressed: () => Navigator.pop(context, true),
                 child: const Text('Delete'),
               ),
             ],
@@ -597,8 +629,7 @@ const SizedBox(height: 15),
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor:
-            isError ? Colors.redAccent : _brown,
+        backgroundColor: isError ? Colors.redAccent : _brown,
         behavior: SnackBarBehavior.floating,
       ),
     );
