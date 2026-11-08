@@ -503,7 +503,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                   children: const [
                     Expanded(
                       flex: 4,
-                      child: Text("All Preordered Furniture:",
+                      child: Text("All Pre-ordered Furniture:",
                           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
                     ),
                     Expanded(
@@ -562,7 +562,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                                     borderRadius: BorderRadius.circular(10)),
                                 elevation: 0,
                               ),
-                              child: const Text("Payed Receipt"),
+                              child: const Text("Payed Order Slip"),
                             ),
                             const SizedBox(width: 12),
                             ElevatedButton(
@@ -574,7 +574,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                                     borderRadius: BorderRadius.circular(10)),
                                 elevation: 0,
                               ),
-                              child: const Text("Cancel Receipt"),
+                              child: const Text("Cancel Order Slip"),
                             ),
                             const SizedBox(width: 12),
                             TextButton(
