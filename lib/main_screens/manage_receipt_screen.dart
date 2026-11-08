@@ -430,7 +430,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          "Receipt ID: $targetReceiptId",
+                          "Order Slip ID: $targetReceiptId",
                           style: const TextStyle(
                               fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black54),
                         ),
@@ -795,7 +795,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                               ),
                             ),
                             const Expanded(child: HeaderText("Date Submitted")),
-                            const Expanded(child: HeaderText("Customer Email")),
+                            const Expanded(child: HeaderText("Customer Name")),
                             const Expanded(child: HeaderText("Total Items")),
                             const Expanded(child: HeaderText("Status")),
                             const Expanded(child: HeaderText("Action")),
@@ -845,8 +845,8 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                             final customerData = preorder != null
                                 ? (preorder['CUSTOMER'] ?? preorder['customer'])
                                 : null;
-                            final String email = customerData != null
-                                ? (customerData['gmail'] ?? 'N/A')
+                            final String name = customerData != null
+                                ? (customerData['full_name'] ?? 'N/A')
                                 : 'N/A';
                             int totalQuantity = 0;
 
@@ -863,7 +863,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
                             return tableRow(
                               receipt['receipt_id'].toString(),
                               receipt['issued_at'].toString().substring(0, 10),
-                              email,
+                              name,
                               totalQuantity.toString(),
                               preorder != null
                                   ? (preorder['status'] ?? 'Pending')
@@ -887,7 +887,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
   Widget tableRow(
     String id,
     String date,
-    String email,
+    String name,
     String items,
     String status, {
     required VoidCallback onView,
@@ -901,7 +901,7 @@ class _ManageReceiptState extends State<ManageReceipt> with TickerProviderStateM
         children: [
           Expanded(child: CellText(id)),
           Expanded(child: CellText(date)),
-          Expanded(child: CellText(email)),
+          Expanded(child: CellText(name)),
           Expanded(child: CellText(items)),
           Expanded(
             child: Center(
