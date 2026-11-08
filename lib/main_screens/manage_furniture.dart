@@ -14,19 +14,20 @@ class ManageFurniture extends StatefulWidget {
 
 class _ManageFurnitureState extends State<ManageFurniture> {
   List<Map<String, dynamic>> _products = [];
-  List<Map<String, dynamic>> _archivedProducts = [];
+  // Archived VARIANT rows (each with its parent FURNITURE embedded)
+  List<Map<String, dynamic>> _archivedVariants = [];
   bool _isLoading = true;
 
   final TextEditingController _searchController = TextEditingController();
   List<String> searchHistory = [];
   String query = "";
-  int? _animatingArchiveId;
-  final Map<int, String> _selectedColors = {};
+  int? _animatingArchiveId; // furniture_id of the row being animated
+  // furniture_id -> selected variant_id
+  final Map<int, int> _selectedVariants = {};
 
-  @override 
+  @override
   void initState() {
     super.initState();
-    _refresh();
     _loadProducts();
   }
 
@@ -41,29 +42,45 @@ class _ManageFurnitureState extends State<ManageFurniture> {
       setState(() => searchHistory.insert(0, value));
     }
   }
+
   void _refresh() {
-  setState(() {
-    _isLoading = true;
-    _searchController.clear();
-    query = "";
-  });
-  _loadProducts();
-}
+    setState(() {
+      _isLoading = true;
+      _searchController.clear();
+      query = "";
+    });
+    _loadProducts();
+  }
+
+  // ---------------------------------------------------------------------------
+  // LOAD
+  // ---------------------------------------------------------------------------
   Future<void> _loadProducts() async {
     try {
       final response = await _supabase
           .from('FURNITURE')
           .select('''
-            furniture_id, furniture_name, description, stock, price, created_at, category_id,
+            furniture_id, furniture_name, description, stock, price, created_at, category_id, is_archived,
             CATEGORY ( category_name ),
-            VARIANT ( variant_id, color, image_url, ar_model_url )
+            VARIANT ( variant_id, color, image_url, ar_model_url, stock, description, is_archived )
           ''')
           .eq('is_archived', false)
           .order('created_at', ascending: false);
 
+      final List<Map<String, dynamic>> products = [];
+      for (final row in response) {
+        final item = Map<String, dynamic>.from(row);
+        final List<dynamic> allVariants =
+            item['VARIANT'] is List ? item['VARIANT'] : [];
+        // Only keep variants that are NOT archived
+        item['VARIANT'] =
+            allVariants.where((v) => v['is_archived'] != true).toList();
+        products.add(item);
+      }
+
       if (!mounted) return;
       setState(() {
-        _products = List<Map<String, dynamic>>.from(response);
+        _products = products;
         _isLoading = false;
       });
     } catch (e) {
@@ -73,25 +90,92 @@ class _ManageFurnitureState extends State<ManageFurniture> {
     }
   }
 
-  void _archiveProduct(Map<String, dynamic> item) async {
-    final furnitureId = item['furniture_id'];
-    setState(() => _animatingArchiveId = furnitureId);
+  Future<void> _loadArchivedVariants() async {
+    try {
+      final response = await _supabase
+          .from('VARIANT')
+          .select('''
+            variant_id, furniture_id, color, image_url, stock, description, is_archived,
+            FURNITURE ( furniture_name, price )
+          ''')
+          .eq('is_archived', true)
+          .order('variant_id', ascending: false);
 
+      _archivedVariants = List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint("Error fetching archives: $e");
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // ARCHIVE / RESTORE (per variant)
+  // ---------------------------------------------------------------------------
+  void _archiveVariant(
+      Map<String, dynamic> item, Map<String, dynamic>? variant) async {
+    final furnitureId = item['furniture_id'] as int;
+
+    // Product with no variants: archive the furniture row itself
+    if (variant == null) {
+      await _archiveWholeProduct(item);
+      return;
+    }
+
+    final variantId = variant['variant_id'] as int;
+    final List<dynamic> variants = item['VARIANT'] is List ? item['VARIANT'] : [];
+    final bool isLastActive = variants.length <= 1;
+
+    if (isLastActive) setState(() => _animatingArchiveId = furnitureId);
+
+    try {
+      // 1. Archive ONLY this variant
+      await _supabase
+          .from('VARIANT')
+          .update({'is_archived': true}).eq('variant_id', variantId);
+
+      // 2. If it was the last active variant, archive the product as well
+      if (isLastActive) {
+        await _supabase
+            .from('FURNITURE')
+            .update({'is_archived': true}).eq('furniture_id', furnitureId);
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+
+      if (!mounted) return;
+      setState(() {
+        if (isLastActive) {
+          _products.removeWhere((p) => p['furniture_id'] == furnitureId);
+        } else {
+          item['VARIANT'] =
+              variants.where((v) => v['variant_id'] != variantId).toList();
+        }
+        _selectedVariants.remove(furnitureId);
+        _animatingArchiveId = null;
+      });
+
+      _showSnackBar(
+        "${item['furniture_name']} (${variant['color']}) archived!",
+        Colors.brown,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _animatingArchiveId = null);
+      _showSnackBar("Archive failed: ${e.toString()}", Colors.red);
+    }
+  }
+
+  // Used only for products that have no variants at all
+  Future<void> _archiveWholeProduct(Map<String, dynamic> item) async {
+    final furnitureId = item['furniture_id'] as int;
+    setState(() => _animatingArchiveId = furnitureId);
     try {
       await _supabase
           .from('FURNITURE')
           .update({'is_archived': true}).eq('furniture_id', furnitureId);
-
-      await _supabase
-          .from('VARIANT')
-          .update({'is_archived': true}).eq('furniture_id', furnitureId);
-
       await Future.delayed(const Duration(milliseconds: 500));
 
       if (!mounted) return;
       setState(() {
         _products.removeWhere((p) => p['furniture_id'] == furnitureId);
-        _archivedProducts.insert(0, item);
         _animatingArchiveId = null;
       });
       _showSnackBar("${item['furniture_name']} archived!", Colors.brown);
@@ -102,59 +186,52 @@ class _ManageFurnitureState extends State<ManageFurniture> {
     }
   }
 
-  void _unarchiveProduct(Map<String, dynamic> item) async {
-    final furnitureId = item['furniture_id'];
+  Future<void> _unarchiveVariant(
+      Map<String, dynamic> variant, VoidCallback onDone) async {
+    final variantId = variant['variant_id'];
+    final furnitureId = variant['furniture_id'];
+    final furniture = variant['FURNITURE'] as Map<String, dynamic>?;
+    final name = furniture?['furniture_name'] ?? 'Item';
 
     try {
+      // Restore the variant
+      await _supabase
+          .from('VARIANT')
+          .update({'is_archived': false}).eq('variant_id', variantId);
+
+      // Make sure the parent product is visible again
       await _supabase
           .from('FURNITURE')
           .update({'is_archived': false}).eq('furniture_id', furnitureId);
 
-      await _supabase
-          .from('VARIANT')
-          .update({'is_archived': false}).eq('furniture_id', furnitureId);
-
       if (!mounted) return;
-      setState(() {
-        _archivedProducts.removeWhere((p) => p['furniture_id'] == furnitureId);
-        _products.insert(0, item);
-      });
-
-      Navigator.pop(context);
-      Future.delayed(const Duration(milliseconds: 200), () => _openArchiveModal());
-      _showSnackBar("${item['furniture_name']} restored to store", Colors.green);
+      _archivedVariants.removeWhere((v) => v['variant_id'] == variantId);
+      onDone();
+      _showSnackBar("$name (${variant['color']}) restored to store", Colors.green);
     } catch (e) {
       _showSnackBar("Failed to restore item: ${e.toString()}", Colors.red);
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // ARCHIVE MODAL
+  // ---------------------------------------------------------------------------
   void _openArchiveModal() async {
     String archiveQuery = "";
-    try {
-      final response = await _supabase
-          .from('FURNITURE')
-          .select('''
-            furniture_id, furniture_name, description, stock, price, created_at, category_id,
-            VARIANT ( variant_id, color, image_url )
-          ''')
-          .eq('is_archived', true)
-          .order('furniture_name', ascending: true);
-
-      setState(() => _archivedProducts = List<Map<String, dynamic>>.from(response));
-    } catch (e) {
-      debugPrint("Error fetching archives: $e");
-    }
+    await _loadArchivedVariants();
 
     if (!mounted) return;
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
-          final filteredArchived = _archivedProducts.where((item) {
-            return (item['furniture_name'] ?? '')
+          final filteredArchived = _archivedVariants.where((v) {
+            final name = (v['FURNITURE']?['furniture_name'] ?? '')
                 .toString()
-                .toLowerCase()
-                .contains(archiveQuery.toLowerCase());
+                .toLowerCase();
+            final color = (v['color'] ?? '').toString().toLowerCase();
+            final q = archiveQuery.toLowerCase();
+            return name.contains(q) || color.contains(q);
           }).toList();
 
           return Dialog(
@@ -181,10 +258,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                         ),
                       ),
                       IconButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _loadProducts();
-                        },
+                        onPressed: () => Navigator.pop(context),
                         icon: const Icon(Icons.close),
                       ),
                     ],
@@ -225,8 +299,10 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                       children: [
                         _headerItem('Image'),
                         _headerItem('Product Name', flex: 2),
+                        _headerItem('Color/Variant'),
                         _headerItem('Price'),
                         _headerItem('Stock'),
+                        _headerItem('Description', flex: 2),
                         _headerItem('Action'),
                       ],
                     ),
@@ -243,12 +319,10 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                         : ListView.builder(
                             itemCount: filteredArchived.length,
                             itemBuilder: (context, index) {
-                              final item = filteredArchived[index];
-                              final List<dynamic> variants =
-                                  item['VARIANT'] is List ? item['VARIANT'] : [];
-                              final imageUrl = variants.isNotEmpty
-                                  ? variants.first['image_url']?.toString()
-                                  : null;
+                              final variant = filteredArchived[index];
+                              final furniture =
+                                  variant['FURNITURE'] as Map<String, dynamic>?;
+                              final imageUrl = variant['image_url']?.toString();
 
                               return Container(
                                 padding: const EdgeInsets.symmetric(
@@ -276,25 +350,38 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                                             : const Icon(Icons.chair, color: Colors.grey),
                                       ),
                                     ),
-                                    _dataItem(item['furniture_name']?.toString() ?? '',
+                                    _dataItem(
+                                        furniture?['furniture_name']?.toString() ?? '',
                                         flex: 2),
-                                    _dataItem("₱ ${_formatPrice(item['price'])}"),
-                                    _dataItem(item['stock']?.toString() ?? 'N/A'),
+                                    _dataItem(variant['color']?.toString() ?? 'N/A'),
+                                    _dataItem("₱ ${_formatPrice(furniture?['price'])}"),
+                                    _dataItem(variant['stock']?.toString() ?? '0'),
+                                    // Description belongs to the variant
+                                    _dataItem(
+                                        variant['description']?.toString() ??
+                                            'No Description',
+                                        flex: 2),
                                     Expanded(
+                                      flex: 2,
                                       child: Center(
                                         child: OutlinedButton.icon(
-                                          onPressed: () => _unarchiveProduct(item),
-                                          style: OutlinedButton.styleFrom(
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(30),
-                                            ),
-                                            side: BorderSide(color: Colors.brown.shade300),
+                                          onPressed: () => _unarchiveVariant(
+                                          variant,
+                                          () => setModalState(() {}),
                                           ),
-                                          icon: const Icon(Icons.unarchive,
-                                              size: 18, color: Colors.brown),
-                                          label: const Text(
-                                            "Restore",
-                                            style: TextStyle(color: Colors.brown),
+                                          style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                          shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(30),
+                                        ),
+                                        side: BorderSide(color: Colors.brown.shade300),
+                                      ),
+                                      icon: const Icon(Icons.unarchive, size: 18, color: Colors.brown),
+                                        label: const Text(
+                                          "Restore",
+                                          maxLines: 1,
+                                          softWrap: false,
+                                          style: TextStyle(color: Colors.brown),
                                           ),
                                         ),
                                       ),
@@ -314,6 +401,9 @@ class _ManageFurnitureState extends State<ManageFurniture> {
     ).then((_) => _loadProducts());
   }
 
+  // ---------------------------------------------------------------------------
+  // ADD / EDIT
+  // ---------------------------------------------------------------------------
   void _openAddProductSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -346,18 +436,22 @@ class _ManageFurnitureState extends State<ManageFurniture> {
       builder: (context) => AddFurniture(editProduct: {
         'furniture_id': item['furniture_id'],
         'furniture_name': item['furniture_name'],
-        'stock': item['stock'],
         'price': item['price'],
-        'description': item['description'],
         'category_id': item['category_id'],
+        // Variant-level values (independent from FURNITURE.stock / description)
         'variant_id': currentVariant['variant_id'],
         'color': currentVariant['color'],
+        'stock': currentVariant['stock'],
+        'description': currentVariant['description'],
         'image_url': currentVariant['image_url'],
         'ar_model_url': currentVariant['ar_model_url'],
       }),
     ).then((_) => _loadProducts());
   }
 
+  // ---------------------------------------------------------------------------
+  // HELPERS
+  // ---------------------------------------------------------------------------
   void _showSnackBar(String message, Color background) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -370,37 +464,54 @@ class _ManageFurnitureState extends State<ManageFurniture> {
     return (double.tryParse(price.toString()) ?? 0.0).toStringAsFixed(2);
   }
 
+  // ---------------------------------------------------------------------------
+  // BUILD
+  // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     final String searchText = query.trim().toLowerCase();
 
     final filteredProducts = _products.where((item) {
-    if (searchText.isEmpty) return true;
+      if (searchText.isEmpty) return true;
 
       final List<dynamic> variants = item['VARIANT'] is List ? item['VARIANT'] : [];
       final String colors =
-      variants.map((v) => v['color'].toString().toLowerCase()).join(' ');
+          variants.map((v) => (v['color'] ?? '').toString().toLowerCase()).join(' ');
+      final String variantDescriptions = variants
+          .map((v) => (v['description'] ?? '').toString().toLowerCase())
+          .join(' ');
+      final String variantStocks =
+          variants.map((v) => (v['stock'] ?? '').toString()).join(' ');
 
       final String name = (item['furniture_name'] ?? '').toString().toLowerCase();
-      final String category = (item['CATEGORY']?['category_name'] ?? '').toString().toLowerCase();
-      final String description = (item['description'] ?? '').toString().toLowerCase();
+      final String category =
+          (item['CATEGORY']?['category_name'] ?? '').toString().toLowerCase();
       final String price = _formatPrice(item['price']);
-      final String stock = (item['stock'] ?? '').toString();
 
-  return name.contains(searchText) ||
-      category.contains(searchText) ||
-      colors.contains(searchText) ||
-      description.contains(searchText) ||
-      price.contains(searchText) ||
-      stock.contains(searchText);
-}).toList();
+      // Product-level stock/description are only searchable when the
+      // product has no variants (otherwise the variant values are shown)
+      final bool hasVariants = variants.isNotEmpty;
+      final String description =
+          hasVariants ? '' : (item['description'] ?? '').toString().toLowerCase();
+      final String stock = hasVariants ? '' : (item['stock'] ?? '').toString();
+
+      return name.contains(searchText) ||
+          category.contains(searchText) ||
+          colors.contains(searchText) ||
+          description.contains(searchText) ||
+          variantDescriptions.contains(searchText) ||
+          price.contains(searchText) ||
+          stock.contains(searchText) ||
+          variantStocks.contains(searchText);
+    }).toList();
 
     if (_isLoading) {
       return const Scaffold(
-      backgroundColor: Color(0xFFF8F5F1),
-      body: Center(child: CircularProgressIndicator(color: Colors.brown)),
+        backgroundColor: Color(0xFFF8F5F1),
+        body: Center(child: CircularProgressIndicator(color: Colors.brown)),
       );
     }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F5F1),
       body: Padding(
@@ -500,19 +611,20 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                 ),
                 const SizedBox(width: 12),
                 Container(
-                decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
-                ],
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+                    ],
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.refresh, color: Colors.brown),
+                    onPressed: _refresh,
+                    tooltip: "Refresh",
+                  ),
                 ),
-                child: IconButton(
-                  icon: const Icon(Icons.refresh, color: Colors.brown),
-                  onPressed: _refresh,
-                  tooltip: "Refresh",
-              ),
-              ),
               ],
             ),
             const SizedBox(height: 15),
@@ -576,154 +688,183 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                       ),
                     ),
                     Expanded(
-                      child: _isLoading
+                      child: filteredProducts.isEmpty
                           ? const Center(
-                              child: CircularProgressIndicator(color: Colors.brown),
+                              child: Text(
+                                'No products found.',
+                                style: TextStyle(color: Colors.brown),
+                              ),
                             )
-                          : filteredProducts.isEmpty
-                              ? const Center(
-                                  child: Text(
-                                    'No products found.',
-                                    style: TextStyle(color: Colors.brown),
-                                  ),
-                                )
-                              : ListView.builder(
-                                  itemCount: filteredProducts.length,
-                                  itemBuilder: (context, index) {
-                                    final item = filteredProducts[index];
-                                    final int furnitureId = item['furniture_id'];
-                                    final categoryName =
-                                        item['CATEGORY']?['category_name'] ?? 'N/A';
-                                    final List<dynamic> variants =
-                                        item['VARIANT'] is List ? item['VARIANT'] : [];
+                          : ListView.builder(
+                              itemCount: filteredProducts.length,
+                              itemBuilder: (context, index) {
+                                final item = filteredProducts[index];
+                                final int furnitureId = item['furniture_id'];
+                                final categoryName =
+                                    item['CATEGORY']?['category_name'] ?? 'N/A';
+                                final List<dynamic> variants =
+                                    item['VARIANT'] is List ? item['VARIANT'] : [];
 
-                                    final String currentSelection =
-                                        _selectedColors[furnitureId] ??
-                                            (variants.isNotEmpty
-                                                ? variants.first['color'].toString()
-                                                : 'N/A');
-                                    final currentVariant = variants.firstWhere(
-                                      (v) => v['color'].toString() == currentSelection,
-                                      orElse: () =>
-                                          variants.isNotEmpty ? variants.first : null,
-                                    );
-                                    final imageUrl = currentVariant?['image_url']?.toString();
+                                // Selected variant (falls back to the first active one)
+                                final int? selectedId = _selectedVariants[furnitureId];
+                                final dynamic currentVariant = variants.isEmpty
+                                    ? null
+                                    : variants.firstWhere(
+                                        (v) => v['variant_id'] == selectedId,
+                                        orElse: () => variants.first,
+                                      );
+                                final String currentColor =
+                                    currentVariant?['color']?.toString() ?? 'N/A';
+                                final imageUrl = currentVariant?['image_url']?.toString();
 
-                                    return AnimatedOpacity(
-                                      duration: const Duration(milliseconds: 500),
-                                      opacity: _animatingArchiveId == furnitureId ? 0.0 : 1.0,
-                                      child: AnimatedScale(
-                                        duration: const Duration(milliseconds: 500),
-                                        scale: _animatingArchiveId == furnitureId ? 0.8 : 1.0,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 14, horizontal: 8),
-                                          decoration: BoxDecoration(
-                                            border: Border(
-                                              bottom: BorderSide(
-                                                  color: Colors.brown.withOpacity(0.08)),
-                                            ),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                child: Center(
-                                                  child: imageUrl != null &&
-                                                          imageUrl.isNotEmpty
-                                                      ? ClipRRect(
-                                                          borderRadius:
-                                                              BorderRadius.circular(8),
-                                                          child: Image.network(
-                                                            imageUrl,
-                                                            height: 45,
-                                                            width: 45,
-                                                            fit: BoxFit.cover,
-                                                          ),
-                                                        )
-                                                      : const Icon(Icons.chair,
-                                                          color: Colors.grey),
-                                                ),
-                                              ),
-                                              _dataItem(
-                                                  item['furniture_name']?.toString() ??
-                                                      'No Name',
-                                                  flex: 2),
-                                              _dataItem('₱ ${_formatPrice(item['price'])}'),
-                                              _dataItem(categoryName, flex: 2),
-                                              Expanded(
-                                                flex: 2,
-                                                child: variants.length > 1
-                                                    ? DropdownButtonHideUnderline(
-                                                        child: DropdownButton<String>(
-                                                          value: currentSelection,
-                                                          isExpanded: true,
-                                                          icon: const Icon(
-                                                            Icons.arrow_drop_down,
-                                                            size: 16,
-                                                            color: Colors.brown,
-                                                          ),
-                                                          items: variants
-                                                              .map(
-                                                                (v) => DropdownMenuItem<String>(
-                                                                  value: v['color'].toString(),
-                                                                  child: Center(
-                                                                    child: Text(
-                                                                        v['color'].toString()),
-                                                                  ),
-                                                                ),
-                                                              )
-                                                              .toList(),
-                                                          onChanged: (newValue) {
-                                                            if (newValue != null) {
-                                                              setState(() =>
-                                                                  _selectedColors[furnitureId] =
-                                                                      newValue);
-                                                            }
-                                                          },
-                                                        ),
-                                                      )
-                                                    : Text(
-                                                        currentSelection,
-                                                        textAlign: TextAlign.center,
-                                                        style: const TextStyle(
-                                                          color: Colors.black87,
-                                                          fontSize: 12,
-                                                        ),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
-                                                      ),
-                                              ),
-                                              _dataItem(
-                                                  item['description']?.toString() ??
-                                                      'No Description',
-                                                  flex: 3),
-                                              _dataItem(item['stock']?.toString() ?? 'N/A'),
-                                              Expanded(
-                                                child: Center(
-                                                  child: IconButton(
-                                                    icon: const Icon(Icons.edit_note,
-                                                        color: Colors.brown),
-                                                    onPressed: () => _openEditProductSheet(
-                                                        context, item, currentVariant),
-                                                  ),
-                                                ),
-                                              ),
-                                              Expanded(
-                                                child: Center(
-                                                  child: IconButton(
-                                                    icon: const Icon(Icons.archive,
-                                                        color: Colors.brown),
-                                                    onPressed: () => _archiveProduct(item),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
+                                // Description & stock come from the selected VARIANT only.
+                                // FURNITURE values are used only if there is no variant.
+                                final String displayDescription = currentVariant != null
+                                    ? (currentVariant['description']?.toString() ??
+                                        'No Description')
+                                    : (item['description']?.toString() ??
+                                        'No Description');
+                                final String displayStock = currentVariant != null
+                                    ? (currentVariant['stock']?.toString() ?? '0')
+                                    : (item['stock']?.toString() ?? 'N/A');
+
+                                return AnimatedOpacity(
+                                  duration: const Duration(milliseconds: 500),
+                                  opacity: _animatingArchiveId == furnitureId ? 0.0 : 1.0,
+                                  child: AnimatedScale(
+                                    duration: const Duration(milliseconds: 500),
+                                    scale: _animatingArchiveId == furnitureId ? 0.8 : 1.0,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 14, horizontal: 8),
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          bottom: BorderSide(
+                                              color: Colors.brown.withOpacity(0.08)),
                                         ),
                                       ),
-                                    );
-                                  },
-                                ),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Center(
+                                              child: imageUrl != null &&
+                                                      imageUrl.isNotEmpty
+                                                  ? ClipRRect(
+                                                      borderRadius:
+                                                          BorderRadius.circular(8),
+                                                      child: Image.network(
+                                                        imageUrl,
+                                                        height: 45,
+                                                        width: 45,
+                                                        fit: BoxFit.cover,
+                                                      ),
+                                                    )
+                                                  : const Icon(Icons.chair,
+                                                      color: Colors.grey),
+                                            ),
+                                          ),
+                                          _dataItem(
+                                              item['furniture_name']?.toString() ??
+                                                  'No Name',
+                                              flex: 2),
+                                          _dataItem('₱ ${_formatPrice(item['price'])}'),
+                                          _dataItem(categoryName, flex: 2),
+                                          Expanded(
+                                            flex: 2,
+                                            child: variants.length > 1
+                                                ? DropdownButtonHideUnderline(
+                                                    child: DropdownButton<int>(
+                                                      value: currentVariant['variant_id']
+                                                          as int,
+                                                      isExpanded: true,
+                                                      style: const TextStyle(
+                                                        color: Colors.black87,
+                                                        fontSize: 12,
+                                                      ),
+                                                      icon: const Icon(
+                                                        Icons.arrow_drop_down,
+                                                        size: 16,
+                                                        color: Colors.brown,
+                                                      ),
+                                                      items: variants
+                                                          .map(
+                                                            (v) => DropdownMenuItem<int>(
+                                                              value:
+                                                                  v['variant_id'] as int,
+                                                              child: Center(
+                                                                child: Text(
+                                                                  (v['color'] ?? 'N/A')
+                                                                      .toString(),
+                                                                  style: const TextStyle(
+                                                                    color: Colors.black87,
+                                                                    fontSize: 12,
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          )
+                                                          .toList(),
+                                                      onChanged: (newValue) {
+                                                        if (newValue != null) {
+                                                          setState(() =>
+                                                              _selectedVariants[
+                                                                  furnitureId] = newValue);
+                                                        }
+                                                      },
+                                                    ),
+                                                  )
+                                                : Text(
+                                                    currentColor,
+                                                    textAlign: TextAlign.center,
+                                                    style: const TextStyle(
+                                                      color: Colors.black87,
+                                                      fontSize: 12,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                          ),
+                                          _dataItem(displayDescription, flex: 3),
+                                          _dataItem(displayStock),
+                                          Expanded(
+                                            child: Center(
+                                              child: IconButton(
+                                                icon: const Icon(Icons.edit_note,
+                                                    color: Colors.brown),
+                                                onPressed: () => _openEditProductSheet(
+                                                    context,
+                                                    item,
+                                                    currentVariant == null
+                                                        ? null
+                                                        : Map<String, dynamic>.from(
+                                                            currentVariant)),
+                                              ),
+                                            ),
+                                          ),
+                                          Expanded(
+                                            child: Center(
+                                              child: IconButton(
+                                                icon: const Icon(Icons.archive,
+                                                    color: Colors.brown),
+                                                tooltip: currentVariant == null
+                                                    ? 'Archive product'
+                                                    : 'Archive this variant',
+                                                onPressed: () => _archiveVariant(
+                                                    item,
+                                                    currentVariant == null
+                                                        ? null
+                                                        : Map<String, dynamic>.from(
+                                                            currentVariant)),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                     ),
                   ],
                 ),

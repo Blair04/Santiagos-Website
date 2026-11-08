@@ -19,6 +19,9 @@ class AddFurniture extends StatefulWidget {
 class _AddFurnitureState extends State<AddFurniture> {
   final _formKey = GlobalKey<FormState>();
 
+  // Same size everywhere so the form never changes font size between modes
+  static const TextStyle _fieldStyle = TextStyle(fontSize: 14, color: Colors.black87);
+
   final _nameController = TextEditingController();
   final _priceController = TextEditingController();
   final _descController = TextEditingController();
@@ -29,15 +32,15 @@ class _AddFurnitureState extends State<AddFurniture> {
   Uint8List? _modelBytes;
   String? _imageName;
   String? _modelName;
-  
+
   String? _existingImageUrl;
   String? _existingModelUrl;
 
   bool _isUploading = false;
   bool _isDraggingImage = false;
   bool _isDraggingModel = false;
-  
-  bool _linkToExisting = false; 
+
+  bool _linkToExisting = false;
 
   List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _existingFurniture = [];
@@ -64,6 +67,28 @@ class _AddFurnitureState extends State<AddFurniture> {
       _selectedCategoryId = p['category_id'];
       _existingImageUrl = p['image_url'];
       _existingModelUrl = p['ar_model_url'];
+      _loadVariantDetails();
+    }
+  }
+
+  // Each variant has its own stock and description, so load them from VARIANT
+  Future<void> _loadVariantDetails() async {
+    final variantId = widget.editProduct!['variant_id'];
+    if (variantId == null) return;
+    try {
+      final v = await _supabase
+          .from('VARIANT')
+          .select('stock, description')
+          .eq('variant_id', variantId)
+          .maybeSingle();
+      if (v != null && mounted) {
+        setState(() {
+          if (v['stock'] != null) _stockController.text = v['stock'].toString();
+          if (v['description'] != null) _descController.text = v['description'];
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading variant details: $e');
     }
   }
 
@@ -80,13 +105,13 @@ class _AddFurnitureState extends State<AddFurniture> {
   Future<void> _loadInitialData() async {
     try {
       final catRes = await _supabase.from('CATEGORY').select('category_id, category_name').order('category_name');
-      final furnRes = await _supabase.from('FURNITURE').select('furniture_id, furniture_name, stock').order('furniture_name');
+      final furnRes = await _supabase.from('FURNITURE').select('furniture_id, furniture_name').order('furniture_name');
 
       if (mounted) {
         setState(() {
           _categories = List<Map<String, dynamic>>.from(catRes);
           _existingFurniture = List<Map<String, dynamic>>.from(furnRes);
-          
+
           if (_categories.isNotEmpty && _selectedCategoryId == null) {
             _selectedCategoryId = _categories.first['category_id'];
           }
@@ -126,8 +151,8 @@ class _AddFurnitureState extends State<AddFurniture> {
 
     setState(() => _isUploading = true);
     showDialog(
-      context: context, 
-      barrierDismissible: false, 
+      context: context,
+      barrierDismissible: false,
       builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.brown)),
     );
 
@@ -163,38 +188,40 @@ class _AddFurnitureState extends State<AddFurniture> {
         arUrl = _supabase.storage.from('3d_models').getPublicUrl(modelFileName);
       }
 
+      final int variantStock = int.parse(_stockController.text.trim());
+      final String variantDesc = _descController.text.trim();
+
       if (_isEditing) {
         final furnitureId = widget.editProduct!['furniture_id'];
         final variantId = widget.editProduct!['variant_id'];
 
-        
+        // FURNITURE: product-level info only (stock/description live in VARIANT)
         await _supabase.from('FURNITURE').update({
           'furniture_name': _nameController.text.trim(),
-          'description': _descController.text.trim(),
           'price': double.parse(_priceController.text.trim()),
-          'stock': int.parse(_stockController.text.trim()), 
           'category_id': _selectedCategoryId,
         }).eq('furniture_id', furnitureId);
 
+        // VARIANT: this variant's own stock and description
         await _supabase.from('VARIANT').update({
           'color': _colorController.text.trim(),
           'image_url': imageUrl,
           'ar_model_url': arUrl,
+          'stock': variantStock,
+          'description': variantDesc,
         }).eq('variant_id', variantId);
 
       } else {
         int targetFurnitureId;
 
-        if (!_linkToExisting) { 
+        if (!_linkToExisting) {
           final res = await _supabase.from('FURNITURE').insert({
             'furniture_name': _nameController.text.trim(),
-            'description': _descController.text.trim(),
-            'stock': int.parse(_stockController.text.trim()), 
             'price': double.parse(_priceController.text.trim()),
             'category_id': _selectedCategoryId,
           }).select('furniture_id').single();
           targetFurnitureId = res['furniture_id'];
-        } else { 
+        } else {
           targetFurnitureId = _selectedFurnitureId!;
         }
 
@@ -203,14 +230,17 @@ class _AddFurnitureState extends State<AddFurniture> {
           'color': _colorController.text.trim(),
           'image_url': imageUrl,
           'ar_model_url': arUrl,
+          'stock': variantStock,
+          'description': variantDesc,
+          'is_archived': false,
         });
       }
 
       if (mounted) {
-        Navigator.pop(context); 
-        Navigator.pop(context); 
+        Navigator.pop(context);
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(_isEditing ? 'Product successfully updated!' : 'Product successfully saved!'), 
+          content: Text(_isEditing ? 'Product successfully updated!' : 'Product successfully saved!'),
           backgroundColor: Colors.green,
         ));
       }
@@ -237,19 +267,19 @@ class _AddFurnitureState extends State<AddFurniture> {
             children: [
               Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
               const SizedBox(height: 16),
-              
+
               Text(_isEditing ? 'Edit Product' : 'Add New Product', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.brown)),
               const SizedBox(height: 20),
-              
+
               Row(
                 children: [
                   _buildFilePicker(
-                    label: 'Image', 
-                    icon: Icons.image, 
-                    bytes: _imageBytes, 
-                    networkUrl: _existingImageUrl, 
-                    onTap: _pickImage, 
-                    isImage: true, 
+                    label: 'Image',
+                    icon: Icons.image,
+                    bytes: _imageBytes,
+                    networkUrl: _existingImageUrl,
+                    onTap: _pickImage,
+                    isImage: true,
                     isHighlighted: _isDraggingImage,
                     onDragEntered: () => setState(() => _isDraggingImage = true),
                     onDragExited: () => setState(() => _isDraggingImage = false),
@@ -257,12 +287,12 @@ class _AddFurnitureState extends State<AddFurniture> {
                   ),
                   const SizedBox(width: 12),
                   _buildFilePicker(
-                    label: '3D Model', 
-                    icon: Icons.view_in_ar, 
-                    bytes: _modelBytes, 
-                    networkUrl: _existingModelUrl, 
-                    onTap: _pickModel, 
-                    isImage: false, 
+                    label: '3D Model',
+                    icon: Icons.view_in_ar,
+                    bytes: _modelBytes,
+                    networkUrl: _existingModelUrl,
+                    onTap: _pickModel,
+                    isImage: false,
                     isHighlighted: _isDraggingModel,
                     onDragEntered: () => setState(() => _isDraggingModel = true),
                     onDragExited: () => setState(() => _isDraggingModel = false),
@@ -270,7 +300,7 @@ class _AddFurnitureState extends State<AddFurniture> {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 24),
 
               if (!_isEditing) ...[
@@ -297,20 +327,22 @@ class _AddFurnitureState extends State<AddFurniture> {
                 DropdownButtonFormField<int>(
                   value: _selectedFurnitureId,
                   isExpanded: true,
+                  style: _fieldStyle,
                   decoration: _inputDeco('Select Existing Furniture'),
-                  items: _existingFurniture.map((f) => DropdownMenuItem<int>(value: f['furniture_id'], child: Text(f['furniture_name']))).toList(),
+                  items: _existingFurniture.map((f) => DropdownMenuItem<int>(value: f['furniture_id'], child: Text(f['furniture_name'], style: _fieldStyle))).toList(),
                   onChanged: (v) => setState(() => _selectedFurnitureId = v),
                 ),
               ] else ...[
-                TextFormField(controller: _nameController, decoration: _inputDeco('Product Name'), validator: (v) => v!.isEmpty ? 'Required' : null),
+                TextFormField(controller: _nameController, style: _fieldStyle, decoration: _inputDeco('Product Name'), validator: (v) => v!.isEmpty ? 'Required' : null),
                 const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
                       child: TextFormField(
-                        controller: _priceController, 
-                        keyboardType: TextInputType.number, 
-                        decoration: _inputDeco('Price').copyWith(prefixText: '₱ '), 
+                        controller: _priceController,
+                        style: _fieldStyle,
+                        keyboardType: TextInputType.number,
+                        decoration: _inputDeco('Price').copyWith(prefixText: '₱ ', prefixStyle: _fieldStyle),
                         validator: (v) {
                           if (v == null || v.isEmpty) return 'Required';
                           final price = double.tryParse(v);
@@ -323,9 +355,11 @@ class _AddFurnitureState extends State<AddFurniture> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: DropdownButtonFormField<int>(
-                        value: _selectedCategoryId, 
+                        value: _selectedCategoryId,
+                        isExpanded: true,
+                        style: _fieldStyle,
                         decoration: _inputDeco('Category'),
-                        items: _categories.map((c) => DropdownMenuItem<int>(value: c['category_id'], child: Text(c['category_name']))).toList(),
+                        items: _categories.map((c) => DropdownMenuItem<int>(value: c['category_id'], child: Text(c['category_name'], style: _fieldStyle))).toList(),
                         onChanged: (v) => setState(() => _selectedCategoryId = v!),
                       ),
                     ),
@@ -334,58 +368,59 @@ class _AddFurnitureState extends State<AddFurniture> {
               ],
 
               const SizedBox(height: 12),
-              
+
+              // Variant/Color + Stock are always shown (each variant has its own stock)
               Row(
                 children: [
                   Expanded(
                     flex: 2,
                     child: TextFormField(
-                      controller: _colorController, 
-                      decoration: _inputDeco('Variant/Color (e.g. Natural Oak)'), 
+                      controller: _colorController,
+                      style: _fieldStyle,
+                      decoration: _inputDeco('Variant/Color (e.g. Natural Oak)'),
                       validator: (v) => v!.isEmpty ? 'Required' : null
                     ),
                   ),
-                  
-                  if (_isEditing || !_linkToExisting) ...[
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 1,
-                      child: TextFormField(
-                        controller: _stockController,
-                        keyboardType: TextInputType.number,
-                        decoration: _inputDeco('Stock Qty'),
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return 'Required';
-                          final stock = int.tryParse(v);
-                          if (stock == null) return 'Invalid integer';
-                          if (stock <= 0) return 'Cannot be negative or zero';
-                          return null;
-                        },
-                      ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 1,
+                    child: TextFormField(
+                      controller: _stockController,
+                      style: _fieldStyle,
+                      keyboardType: TextInputType.number,
+                      decoration: _inputDeco('Stock Qty'),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Required';
+                        final stock = int.tryParse(v);
+                        if (stock == null) return 'Invalid integer';
+                        if (stock < 0) return 'Cannot be negative';
+                        return null;
+                      },
                     ),
-                  ],
+                  ),
                 ],
               ),
-              
+
               const SizedBox(height: 12),
-              if (_isEditing || !_linkToExisting) TextFormField(controller: _descController, maxLines: 2, decoration: _inputDeco('Description')),
-              
+              // Description is always shown (each variant has its own description)
+              TextFormField(controller: _descController, style: _fieldStyle, maxLines: 2, decoration: _inputDeco('Description')),
+
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _isUploading ? null : _saveProduct,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.brown, 
-                    foregroundColor: Colors.white, 
-                    padding: const EdgeInsets.symmetric(vertical: 16), 
+                    backgroundColor: Colors.brown,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                     elevation: 0,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
                   ),
                   child: Text(
-                    _isEditing 
-                        ? 'Update Product' 
-                        : (_linkToExisting ? 'Confirm & Add Variant' : 'Add New Product'), 
+                    _isEditing
+                        ? 'Update Product'
+                        : (_linkToExisting ? 'Confirm & Add Variant' : 'Add New Product'),
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
                   ),
                 ),
@@ -398,12 +433,12 @@ class _AddFurnitureState extends State<AddFurniture> {
   }
 
   Widget _buildFilePicker({
-    required String label, 
-    required IconData icon, 
-    Uint8List? bytes, 
-    String? networkUrl, 
-    required VoidCallback onTap, 
-    required bool isImage, 
+    required String label,
+    required IconData icon,
+    Uint8List? bytes,
+    String? networkUrl,
+    required VoidCallback onTap,
+    required bool isImage,
     required bool isHighlighted,
     required VoidCallback onDragEntered,
     required VoidCallback onDragExited,
@@ -427,31 +462,31 @@ class _AddFurnitureState extends State<AddFurniture> {
             duration: const Duration(milliseconds: 150),
             height: 100,
             decoration: BoxDecoration(
-              color: isHighlighted ? Colors.brown.withOpacity(0.2) : Colors.brown.withOpacity(0.05), 
-              borderRadius: BorderRadius.circular(10), 
+              color: isHighlighted ? Colors.brown.withOpacity(0.2) : Colors.brown.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: isHighlighted ? Colors.brown : (hasAsset ? Colors.green : Colors.brown.withOpacity(0.15)),
                 width: isHighlighted ? 2.5 : 1.0,
               )
             ),
             child: hasAsset && !isHighlighted
-              ? (isImage 
+              ? (isImage
                   ? ClipRRect(
-                      borderRadius: BorderRadius.circular(10), 
-                      child: bytes != null 
-                          ? Image.memory(bytes, fit: BoxFit.cover) 
+                      borderRadius: BorderRadius.circular(10),
+                      child: bytes != null
+                          ? Image.memory(bytes, fit: BoxFit.cover)
                           : Image.network(networkUrl!, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.broken_image, color: Colors.grey))
-                    ) 
+                    )
                   : const Icon(Icons.check_circle, color: Colors.green))
               : Column(
-                  mainAxisAlignment: MainAxisAlignment.center, 
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      isHighlighted ? Icons.file_upload : icon, 
+                      isHighlighted ? Icons.file_upload : icon,
                       color: isHighlighted ? Colors.brown : Colors.brown.withOpacity(0.6)
-                    ), 
+                    ),
                     Text(
-                      isHighlighted ? 'Drop File' : label, 
+                      isHighlighted ? 'Drop File' : label,
                       style: TextStyle(fontSize: 12, fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)
                     )
                   ]
@@ -463,9 +498,9 @@ class _AddFurnitureState extends State<AddFurniture> {
   }
 
   InputDecoration _inputDeco(String label) => InputDecoration(
-    labelText: label, 
+    labelText: label,
     labelStyle: const TextStyle(color: Colors.brown, fontSize: 13),
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), 
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
     focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.brown, width: 2)),
     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
   );
