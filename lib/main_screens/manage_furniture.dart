@@ -26,6 +26,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
   @override 
   void initState() {
     super.initState();
+    _refresh();
     _loadProducts();
   }
 
@@ -40,7 +41,14 @@ class _ManageFurnitureState extends State<ManageFurniture> {
       setState(() => searchHistory.insert(0, value));
     }
   }
-
+  void _refresh() {
+  setState(() {
+    _isLoading = true;
+    _searchController.clear();
+    query = "";
+  });
+  _loadProducts();
+}
   Future<void> _loadProducts() async {
     try {
       final response = await _supabase
@@ -364,13 +372,35 @@ class _ManageFurnitureState extends State<ManageFurniture> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredProducts = _products.where((item) {
-      return (item['furniture_name'] ?? '')
-          .toString()
-          .toLowerCase()
-          .contains(query.toLowerCase());
-    }).toList();
+    final String searchText = query.trim().toLowerCase();
 
+    final filteredProducts = _products.where((item) {
+    if (searchText.isEmpty) return true;
+
+      final List<dynamic> variants = item['VARIANT'] is List ? item['VARIANT'] : [];
+      final String colors =
+      variants.map((v) => v['color'].toString().toLowerCase()).join(' ');
+
+      final String name = (item['furniture_name'] ?? '').toString().toLowerCase();
+      final String category = (item['CATEGORY']?['category_name'] ?? '').toString().toLowerCase();
+      final String description = (item['description'] ?? '').toString().toLowerCase();
+      final String price = _formatPrice(item['price']);
+      final String stock = (item['stock'] ?? '').toString();
+
+  return name.contains(searchText) ||
+      category.contains(searchText) ||
+      colors.contains(searchText) ||
+      description.contains(searchText) ||
+      price.contains(searchText) ||
+      stock.contains(searchText);
+}).toList();
+
+    if (_isLoading) {
+      return const Scaffold(
+      backgroundColor: Color(0xFFF8F5F1),
+      body: Center(child: CircularProgressIndicator(color: Colors.brown)),
+      );
+    }
     return Scaffold(
       backgroundColor: const Color(0xFFF8F5F1),
       body: Padding(
@@ -382,7 +412,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
-                  'My Products',
+                  'Manage Products',
                   style: TextStyle(
                     color: Colors.brown,
                     fontSize: 24,
@@ -468,6 +498,21 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                     ),
                   ),
                 ),
+                const SizedBox(width: 12),
+                Container(
+                decoration: const BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+                ],
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.refresh, color: Colors.brown),
+                  onPressed: _refresh,
+                  tooltip: "Refresh",
+              ),
+              ),
               ],
             ),
             const SizedBox(height: 15),
