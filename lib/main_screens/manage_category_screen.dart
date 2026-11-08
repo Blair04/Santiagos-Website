@@ -16,8 +16,10 @@ class FurnitureCategory {
     return FurnitureCategory(
       id: map['category_id'] as int?,
       name: map['category_name'] as String,
+      // Only show products that are NOT archived
       products: map['FURNITURE'] != null
           ? (map['FURNITURE'] as List)
+              .where((p) => p['is_archived'] != true)
               .map((p) => FurnitureProduct.fromMap(p))
               .toList()
           : const [],
