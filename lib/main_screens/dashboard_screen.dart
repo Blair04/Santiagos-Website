@@ -382,22 +382,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                
-Icon(
-  Icons.schedule_rounded,
-  size: 17,
-  color: Colors.grey.shade600,
-),
-const SizedBox(width: 8),
-Text(
-  'Updated ${_formatTime(_lastUpdated!)}',
-  style: TextStyle(
-    fontSize: 14,
-    color: Colors.grey.shade700,
-    fontWeight: FontWeight.w600,
-  ),
-),
-
+                Icon(
+                  Icons.schedule_rounded,
+                  size: 15,
+                  color: Colors.grey.shade600,
+                ),
+                const SizedBox(width: 7),
+                Text(
+                  'Updated ${_formatTime(_lastUpdated!)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           ),
@@ -542,7 +540,7 @@ Text(
           right: _buildOrderSlipStatusSection(data.preorderStats),
         ),
         const SizedBox(height: 24),
-        _buildStockOverview(data),
+        _buildStockOverviewSection(data),
         const SizedBox(height: 24),
         _buildResponsivePair(
           leftFlex: 3,
@@ -1186,15 +1184,14 @@ Text(
                   DataColumn(label: Text('Status')),
                 ],
                 rows: receipts.map((receipt) {
-                  
-            final normalizedStatus = receipt.status.trim().toLowerCase();
-            final status = normalizedStatus.isEmpty? 'Pending'
-             : '${normalizedStatus[0].toUpperCase()}${normalizedStatus.substring(1)}';
-
-            final color = _isCompletedStatus(normalizedStatus)
-            ? _sage: _isCancelledStatus(normalizedStatus)
-            ? _mutedRed : _bronze;
-
+                  final status = receipt.status.isEmpty
+                      ? 'Pending'
+                      : '${receipt.status[0].toUpperCase()}${receipt.status.substring(1)}';
+                  final color = _isCompletedStatus(status)
+                      ? _sage
+                      : _isCancelledStatus(status)
+                          ? _mutedRed
+                          : _bronze;
                   return DataRow(cells: [
                     DataCell(Text('#${receipt.receiptId}')),
                     DataCell(Text(receipt.customerName, overflow: TextOverflow.ellipsis)),
@@ -1236,60 +1233,36 @@ Text(
                     // Fill the snapshot width when the columns fit, but allow
                     // horizontal scrolling if a narrow window needs more room.
                     constraints: BoxConstraints(minWidth: constraints.maxWidth),
-                    
-child: DataTable(
-  horizontalMargin: 10,
-  columnSpacing: 18,
-  headingRowHeight: 46,
-  dataRowMinHeight: 48,
-  dataRowMaxHeight: 58,
-  headingRowColor: const WidgetStatePropertyAll(
-    Color(0xFFFBF8F5),
-  ),
-  columns: const [
-    DataColumn(label: Text('Category')),
-    DataColumn(label: Text('Total Revenue')),
-    DataColumn(
-      columnWidth: FixedColumnWidth(100),
-      label: Center(child: Text('Units Sold')),
-    ),
-    DataColumn(
-      columnWidth: FixedColumnWidth(130),
-      label: Center(child: Text('Total Pre-orders')),
-    ),
-  ],
-  rows: categories.map((category) => DataRow(
-    cells: [
-      DataCell(
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 150),
-          child: Text(
-            category.name,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ),
-      DataCell(Text(_formatCurrency(category.revenue))),
-      DataCell(
-        SizedBox(
-          width: double.infinity,
-          child: Center(
-            child: Text('${category.unitsSold}'),
-          ),
-        ),
-      ),
-      DataCell(
-        SizedBox(
-          width: double.infinity,
-          child: Center(
-            child: Text('${category.preorderCount}'),
-          ),
-        ),
-      ),
-    ],
-  )).toList(),
-),
-
+                    child: DataTable(
+                      horizontalMargin: 10,
+                      columnSpacing: 18,
+                      headingRowHeight: 46,
+                      dataRowMinHeight: 48,
+                      dataRowMaxHeight: 58,
+                      headingRowColor: const WidgetStatePropertyAll(
+                        Color(0xFFFBF8F5),
+                      ),
+                      columns: const [
+                        DataColumn(label: Text('Category')),
+                        DataColumn(label: Text('Total Revenue')),
+                        DataColumn(label: Center(child: Text('Units Sold')),),
+                        DataColumn(label: Center(child: Text('Total Pre-orders'))),
+                      ],
+                      rows: categories.map((category) => DataRow(cells: [
+                        DataCell(
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 150),
+                            child: Text(
+                              category.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                        DataCell(Text(_formatCurrency(category.revenue))),
+                        DataCell(Center(child: Text('${category.unitsSold}'))),
+                        DataCell(Center(child: Text('${category.preorderCount}'))),
+                      ])).toList(),
+                    ),
                   ),
                 );
               },
@@ -1297,154 +1270,455 @@ child: DataTable(
     );
   }
 
+  /// Stock overview built from the current active FURNITURE rows.
+  /// Category totals, low-stock products, and out-of-stock products are
+  /// calculated in DashboardData.fromRows and refreshed by the existing
+  /// Supabase realtime subscription.
+  Widget _buildStockOverviewSection(DashboardData data) {
+    final lowStockItems = data.stockAlerts
+        .where((item) => item.stockLeft > 0 && item.stockLeft <= 5)
+        .toList()
+      ..sort((a, b) {
+        final stockComparison = a.stockLeft.compareTo(b.stockLeft);
+        if (stockComparison != 0) return stockComparison;
+        return a.furnitureName.compareTo(b.furnitureName);
+      });
 
-Widget _buildStockOverview(DashboardData data) {
-  return Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(24),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      boxShadow: [
-        BoxShadow(
-          color: _ink.withValues(alpha: 0.025),
-          blurRadius: 18,
-          offset: const Offset(0, 6),
+    final outOfStockItems = data.stockAlerts
+        .where((item) => item.stockLeft == 0)
+        .toList();
+
+    Widget panel({
+      required String title,
+      required IconData icon,
+      required Color color,
+      required Color background,
+      required Widget content,
+    }) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(18),
         ),
-      ],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Card title
-        Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFBF8F5),
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: const Icon(
-                Icons.inventory_2_outlined,
-                color: _darkBrown,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Text(
-              'Stock Overview',
-              style: TextStyle(
-                color: _ink,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 22),
-
-        // Total stock count
-        Text(
-          data.totalStockCount.toString(),
-          style: const TextStyle(
-            color: _ink,
-            fontSize: 34,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -1,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Total units currently in stock',
-          style: TextStyle(
-            color: Colors.grey.shade600,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-
-        const SizedBox(height: 20),
-        Divider(
-          color: Colors.grey.shade200,
-          height: 1,
-        ),
-        const SizedBox(height: 16),
-
-        // Bottom action row
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final action = FilledButton.icon(
-              onPressed: widget.onViewProducts,
-              icon: const Icon(
-                Icons.arrow_forward_rounded,
-                size: 16,
-              ),
-              label: const Text(
-                'View Stock',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              style: FilledButton.styleFrom(
-                backgroundColor: _darkBrown,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 13,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            );
-
-            if (constraints.maxWidth < 420) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Manage your furniture inventory',
+            Row(
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
                     style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      color: color,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: action,
-                  ),
-                ],
-              );
-            }
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            content,
+          ],
+        ),
+      );
+    }
 
-            return Row(
+    Widget categoryRows() {
+      if (data.categoryStock.isEmpty) {
+        return Text(
+          'No category stock available.',
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+        );
+      }
+
+      return Column(
+        children: [
+          for (var index = 0; index < data.categoryStock.length; index++) ...[
+            Row(
               children: [
                 Expanded(
                   child: Text(
-                    'Manage your furniture inventory',
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
+                    data.categoryStock[index].name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _ink,
                       fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-                action,
+                const SizedBox(width: 8),
+                Text(
+                  '${data.categoryStock[index].stockUnits} units',
+                  style: TextStyle(
+                    color: const Color(0xFF63866C),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ],
-            );
-          },
-        ),
-      ],
-    ),
-  );
-}
+            ),
+            if (index != data.categoryStock.length - 1)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Divider(
+                  height: 1,
+                  color: const Color(0xFF63866C).withValues(alpha: 0.14),
+                ),
+              ),
+          ],
+        ],
+      );
+    }
 
+    Widget furnitureRows(
+      List<FurnitureStockAlert> items, {
+      required String emptyMessage,
+      required Color valueColor,
+      required String Function(int stock) valueLabel,
+    }) {
+      if (items.isEmpty) {
+        return Text(
+          emptyMessage,
+          style: TextStyle(
+            color: Colors.grey.shade600,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        );
+      }
+
+      return Column(
+        children: [
+          for (var index = 0; index < items.length; index++) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    items[index].furnitureName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _ink,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  valueLabel(items[index].stockLeft),
+                  textAlign: TextAlign.end,
+                  style: TextStyle(
+                    color: valueColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            if (index != items.length - 1)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Divider(
+                  height: 1,
+                  color: valueColor.withValues(alpha: 0.14),
+                ),
+              ),
+          ],
+        ],
+      );
+    }
+
+    final panels = [
+      panel(
+        title: 'In Stock',
+        icon: Icons.check_circle_outline_rounded,
+        color: const Color(0xFF63866C),
+        background: const Color(0xFFEEF5EF),
+        content: categoryRows(),
+      ),
+      panel(
+        title: 'Low Stock',
+        icon: Icons.warning_amber_rounded,
+        color: const Color(0xFFBE8746),
+        background: const Color(0xFFFBF3E8),
+        content: furnitureRows(
+          lowStockItems,
+          emptyMessage: 'No low-stock furniture.',
+          valueColor: const Color(0xFFBE8746),
+          valueLabel: (stock) => '$stock left',
+        ),
+      ),
+      panel(
+        title: 'Out of Stock',
+        icon: Icons.inventory_2_outlined,
+        color: const Color(0xFFC45F58),
+        background: const Color(0xFFFAEEEE),
+        content: furnitureRows(
+          outOfStockItems,
+          emptyMessage: 'No out of stock',
+          valueColor: const Color(0xFFC45F58),
+          valueLabel: (_) => '0 left',
+        ),
+      ),
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE9E3DE)),
+        boxShadow: [
+          BoxShadow(
+            color: _ink.withValues(alpha: 0.025),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Stock Overview',
+                      style: TextStyle(
+                        color: _ink,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Current inventory breakdown',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF6EDE3),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: const Icon(
+                  Icons.inventory_2_outlined,
+                  color: Color(0xFF987044),
+                  size: 25,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFBF8F5),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'TOTAL STOCK UNITS',
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  _formatCount(data.totalStockCount),
+                  style: const TextStyle(
+                    color: _ink,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Units across all active products',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth < 760) {
+                return Column(
+                  children: [
+                    for (var index = 0; index < panels.length; index++) ...[
+                      if (index > 0) const SizedBox(height: 12),
+                      SizedBox(width: double.infinity, child: panels[index]),
+                    ],
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var index = 0; index < panels.length; index++) ...[
+                    if (index > 0) const SizedBox(width: 12),
+                    Expanded(child: panels[index]),
+                  ],
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 17),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Monitor your furniture inventory',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: widget.onViewProducts,
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF987044),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                child: const Text('View Stock  →'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLowStockBanner(DashboardData data) {
+    final message = data.lowStockCount == 0
+        ? 'Inventory levels are healthy.'
+        : 'You have ${data.lowStockCount} low stock '
+              '${data.lowStockCount == 1 ? 'item' : 'items'}.';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 17),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6EDE3),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _bronze.withValues(alpha: 0.12)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final copy = Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.75),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.lightbulb_outline_rounded,
+                  color: _bronze,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      message,
+                      style: const TextStyle(
+                        color: _ink,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      data.lowStockCount == 0
+                          ? 'Continue monitoring catalog movement.'
+                          : 'Please restock to avoid running out of inventory.',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+
+          final button = FilledButton(
+            onPressed: widget.onViewProducts,
+            style: FilledButton.styleFrom(
+              backgroundColor: _darkBrown,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(11),
+              ),
+            ),
+            child: const Text(
+              'View Low Stock',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+            ),
+          );
+
+          if (constraints.maxWidth < 620) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [copy, const SizedBox(height: 15), button],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: copy),
+              const SizedBox(width: 20),
+              button,
+            ],
+          );
+        },
+      ),
+    );
+  }
 
   Widget _buildPreorderStatusSection(PreorderSummary stats) {
     return _buildContentSectionContainer(
@@ -1837,6 +2111,11 @@ Widget _buildStockOverview(DashboardData data) {
       ),
     );
   }
+
+  String _formatCount(int value) => value.toString().replaceAllMapped(
+    RegExp(r'\B(?=(\d{3})+(?!\d))'),
+    (match) => ',',
+  );
 
   String _formatCurrency(double value) {
     final fixed = value.toStringAsFixed(2);

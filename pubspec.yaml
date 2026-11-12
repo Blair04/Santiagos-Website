@@ -97,4 +97,6 @@ flutter:
 
   
   assets:
-    - assets/images/santiago_logo.jpg
+    - assets/images/santiago_logo.jpg 
+    - assets/images/santiago_logo_fitted.png
+    
