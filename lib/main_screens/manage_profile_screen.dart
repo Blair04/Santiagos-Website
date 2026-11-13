@@ -6,8 +6,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Lets the signed-in administrator update account details without changing
-/// the application's existing Supabase project or database structure.
+/// Lets the signed-in manager update the business logo and login credentials
+/// without changing the application's existing Supabase project structure.
 class ManageProfileScreen extends StatefulWidget {
   final VoidCallback? onProfileUpdated;
 
@@ -24,7 +24,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   static const Color _darkBrown = Color(0xFF6D4C41);
   static const Color _sage = Color(0xFF438A5E);
   static const Color _mutedRed = Color(0xFFD9534F);
-  static const String _localAvatarKey = 'adminProfileAvatarBase64';
+  static const String _localAvatarKey = 'santiagoBusinessLogoBase64';
 
   final SupabaseClient _supabase = Supabase.instance.client;
   final ImagePicker _imagePicker = ImagePicker();
@@ -44,17 +44,47 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   String? _managerBranchId; // branch_id from the managers row
   bool _managerLinked = false; // true once the managers row is found & active
 
+
   User? get _currentUser => _supabase.auth.currentUser;
+
+  // A strong password must satisfy every rule below.
+  bool get _hasMinPasswordLength => _passwordController.text.length >= 8;
+  bool get _hasUppercase => RegExp(r'[A-Z]').hasMatch(_passwordController.text);
+  bool get _hasLowercase => RegExp(r'[a-z]').hasMatch(_passwordController.text);
+  bool get _hasNumber => RegExp(r'[0-9]').hasMatch(_passwordController.text);
+  bool get _hasSpecialCharacter =>
+      RegExp(r'[!@#$%^&*(),.?":{}|<>_\-+=/~;]')
+          .hasMatch(_passwordController.text);
+
+  int get _passwordStrengthScore => [
+        _hasMinPasswordLength,
+        _hasUppercase,
+        _hasLowercase,
+        _hasNumber,
+        _hasSpecialCharacter,
+      ].where((passed) => passed).length;
+
+  bool get _isStrongPassword => _passwordStrengthScore == 5;
+
+  bool get _passwordsMatch =>
+      _confirmPasswordController.text.isNotEmpty &&
+      _passwordController.text == _confirmPasswordController.text;
 
   @override
   void initState() {
     super.initState();
     _emailController.text = _currentUser?.email ?? '';
-    _remoteAvatarUrl = _currentUser?.userMetadata?['avatar_url']
+    _passwordController.addListener(_refreshPasswordFeedback);
+    _confirmPasswordController.addListener(_refreshPasswordFeedback);
+    _remoteAvatarUrl = _currentUser?.userMetadata?['business_logo_url']
         ?.toString()
         .trim();
     _loadLocalAvatar();
     _loadManagerLink();
+  }
+
+  void _refreshPasswordFeedback() {
+    if (mounted) setState(() {});
   }
 
   /// Finds the managers row whose id matches the signed-in Auth user
@@ -102,7 +132,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
 
     final bytes = await image.readAsBytes();
     if (bytes.lengthInBytes > 5 * 1024 * 1024) {
-      _showMessage('Choose an image smaller than 5 MB.', _mutedRed);
+      _showMessage('Choose a business logo image smaller than 5 MB.', _mutedRed);
       return;
     }
 
@@ -128,7 +158,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
           : extension == 'webp'
           ? 'image/webp'
           : 'image/jpeg';
-      final path = '${user.id}/avatar.$extension';
+      final path = '${user.id}/business-logo.$extension';
 
       try {
         await _supabase.storage
@@ -140,7 +170,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
             );
         final publicUrl = _supabase.storage.from('avatars').getPublicUrl(path);
         await _supabase.auth.updateUser(
-          UserAttributes(data: {'avatar_url': publicUrl}),
+          UserAttributes(data: {'business_logo_url': publicUrl}),
         );
         _remoteAvatarUrl = publicUrl;
         synchronized = true;
@@ -154,8 +184,8 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
     setState(() => _isUploadingAvatar = false);
     _showMessage(
       synchronized
-          ? 'Profile photo updated successfully.'
-          : 'Profile photo saved on this browser.',
+          ? 'Business logo updated successfully.'
+          : 'Business logo saved on this browser. Cloud sync was unavailable.',
       _sage,
     );
   }
@@ -204,8 +234,11 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   Future<void> _updatePassword() async {
     final password = _passwordController.text;
     final confirmation = _confirmPasswordController.text;
-    if (password.length < 8) {
-      _showMessage('Use at least 8 characters for the password.', _mutedRed);
+    if (!_isStrongPassword) {
+      _showMessage(
+        'Create a strong password by meeting all five security requirements.',
+        _mutedRed,
+      );
       return;
     }
     if (password != confirmation) {
@@ -290,7 +323,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Keep the account logo, email, and password up to date.',
+                      'Manage your business logo and manager sign-in details.',
                       style: TextStyle(
                         color: Colors.grey.shade600,
                         fontSize: 15,
@@ -343,7 +376,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   Widget _buildProfileCard() {
     return _buildSectionCard(
       title: 'Business Logo',
-      subtitle: 'JPG, PNG, or WebP up to 5 MB',
+      subtitle: 'Company logo • JPG, PNG, or WebP up to 5 MB',
       child: Column(
         children: [
           SizedBox(
@@ -370,7 +403,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
           const SizedBox(height: 20),
 
           const Text(
-            'Manager Account',
+            "Santiago's Furniture",
             style: TextStyle(
               color: _ink,
               fontSize: 19,
@@ -381,16 +414,8 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
           const SizedBox(height: 5),
 
           Text(
-            _currentUser?.email ?? 'No authenticated account',
-            textAlign: TextAlign.center,
+            'Official business logo',
             style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-          ),
-
-          const SizedBox(height: 5),
-
-          Text(
-            _memberSinceLabel(_currentUser),
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
           ),
 
           const SizedBox(height: 20),
@@ -400,7 +425,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
             child: OutlinedButton.icon(
               onPressed: _isUploadingAvatar ? null : _pickAndUploadAvatar,
               icon: const Icon(Icons.upload_outlined),
-              label: const Text('Upload photo'),
+              label: const Text('Change Business Logo'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _darkBrown,
                 side: BorderSide(color: _darkBrown.withValues(alpha: 0.45)),
@@ -476,7 +501,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   Widget _buildPasswordCard() {
     return _buildSectionCard(
       title: 'Password & Security',
-      subtitle: 'Use at least 8 characters and enter the same password twice.',
+      subtitle: 'Create a strong password to protect the manager account.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -495,7 +520,11 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
             autofillHints: const [AutofillHints.newPassword],
             decoration: _passwordDecoration('Enter a new password'),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
+          _buildPasswordStrengthIndicator(),
+          const SizedBox(height: 14),
+          _buildPasswordRequirements(),
+          const SizedBox(height: 20),
           const Text(
             'Confirm password',
             style: TextStyle(
@@ -508,19 +537,170 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
           TextField(
             controller: _confirmPasswordController,
             obscureText: !_showPasswords,
-            onSubmitted: (_) => _isUpdatingPassword ? null : _updatePassword(),
+            onSubmitted: (_) =>
+                _isUpdatingPassword ? null : _updatePassword(),
             decoration: _passwordDecoration('Repeat the new password'),
           ),
-          const SizedBox(height: 18),
+          if (_confirmPasswordController.text.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  _passwordsMatch ? Icons.check_circle : Icons.error_outline,
+                  size: 15,
+                  color: _passwordsMatch ? _sage : _mutedRed,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _passwordsMatch
+                      ? 'Passwords match'
+                      : 'Passwords do not match',
+                  style: TextStyle(
+                    color: _passwordsMatch ? _sage : _mutedRed,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 20),
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton.icon(
-              onPressed: _isUpdatingPassword ? null : _updatePassword,
+              onPressed: _isUpdatingPassword ||
+                      !_isStrongPassword ||
+                      !_passwordsMatch
+                  ? null
+                  : _updatePassword,
               style: _primaryButtonStyle(),
               icon: _isUpdatingPassword
                   ? _buttonProgress()
                   : const Icon(Icons.lock_reset_rounded, size: 18),
               label: const Text('Update password'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPasswordStrengthIndicator() {
+    final score = _passwordStrengthScore;
+    final hasInput = _passwordController.text.isNotEmpty;
+
+    final Color strengthColor;
+    final String strengthLabel;
+
+    if (!hasInput) {
+      strengthColor = Colors.grey.shade400;
+      strengthLabel = 'Not entered';
+    } else if (score <= 2) {
+      strengthColor = _mutedRed;
+      strengthLabel = 'Weak';
+    } else if (score <= 4) {
+      strengthColor = _bronze;
+      strengthLabel = 'Moderate';
+    } else {
+      strengthColor = _sage;
+      strengthLabel = 'Strong';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Password strength',
+              style: TextStyle(
+                color: _ink,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            Text(
+              strengthLabel,
+              style: TextStyle(
+                color: strengthColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Row(
+            children: List.generate(5, (index) {
+              final active = hasInput && index < score;
+              return Expanded(
+                child: Container(
+                  height: 6,
+                  margin: EdgeInsets.only(right: index == 4 ? 0 : 5),
+                  color: active ? strengthColor : const Color(0xFFEAE5E0),
+                ),
+              );
+            }),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPasswordRequirements() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFCFAF8),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _ink.withValues(alpha: 0.07)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Password requirements: ',
+            style: TextStyle(
+              color: _ink,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _buildRequirementRow('At least 8 characters', _hasMinPasswordLength),
+          _buildRequirementRow('One uppercase letter (A–Z)', _hasUppercase),
+          _buildRequirementRow('One lowercase letter (a–z)', _hasLowercase),
+          _buildRequirementRow('At least one number (0–9)', _hasNumber),
+          _buildRequirementRow(
+            'At least one special character (!@#\$...)',
+            _hasSpecialCharacter,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRequirementRow(String label, bool passed) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        children: [
+          Icon(
+            passed ? Icons.check_circle_rounded : Icons.circle_outlined,
+            size: 15,
+            color: passed ? _sage : Colors.grey.shade400,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: passed ? _sage : Colors.grey.shade600,
+              fontSize: 11,
+              fontWeight: passed ? FontWeight.w600 : FontWeight.w400,
             ),
           ),
         ],

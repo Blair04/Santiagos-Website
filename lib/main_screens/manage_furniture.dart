@@ -25,6 +25,10 @@ class _ManageFurnitureState extends State<ManageFurniture> {
   // furniture_id -> selected variant_id
   final Map<int, int> _selectedVariants = {};
 
+  // Sorting state for the Category and Stock columns.
+  String? _sortColumn;
+  bool _sortAscending = true;
+
   @override
   void initState() {
     super.initState();
@@ -465,6 +469,96 @@ class _ManageFurnitureState extends State<ManageFurniture> {
   }
 
   // ---------------------------------------------------------------------------
+  // SORTING
+  // ---------------------------------------------------------------------------
+  void _toggleSort(String column) {
+    setState(() {
+      if (_sortColumn == column) {
+        _sortAscending = !_sortAscending;
+      } else {
+        _sortColumn = column;
+        _sortAscending = true;
+      }
+    });
+  }
+
+  int _stockValueForSort(Map<String, dynamic> item) {
+    final List<dynamic> variants =
+        item['VARIANT'] is List ? item['VARIANT'] : <dynamic>[];
+
+    if (variants.isEmpty) {
+      return int.tryParse(item['stock']?.toString() ?? '') ?? 0;
+    }
+
+    final int? selectedId = _selectedVariants[item['furniture_id']];
+    final dynamic selectedVariant = variants.firstWhere(
+      (variant) => variant['variant_id'] == selectedId,
+      orElse: () => variants.first,
+    );
+    return int.tryParse(selectedVariant['stock']?.toString() ?? '') ?? 0;
+  }
+
+  Widget _sortableHeaderItem(
+    String title, {
+    required String sortColumn,
+    int flex = 1,
+  }) {
+    final bool isActive = _sortColumn == sortColumn;
+    final Color mutedArrow = Colors.brown.withOpacity(0.32);
+    final Color activeArrow = Colors.brown.withOpacity(0.78);
+
+    return Expanded(
+      flex: flex,
+      child: InkWell(
+        onTap: () => _toggleSort(sortColumn),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.brown,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              // Two slim chevrons, matching the reference table-header style.
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.keyboard_arrow_up_rounded,
+                    size: 13,
+                    color: isActive && _sortAscending ? activeArrow : mutedArrow,
+                  ),
+                  Transform.translate(
+                    offset: const Offset(0, -5),
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 13,
+                      color: isActive && !_sortAscending ? activeArrow : mutedArrow,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // BUILD
   // ---------------------------------------------------------------------------
   @override
@@ -504,6 +598,25 @@ class _ManageFurnitureState extends State<ManageFurniture> {
           stock.contains(searchText) ||
           variantStocks.contains(searchText);
     }).toList();
+
+    // Apply sorting after searching so the selected order is preserved
+    // while the user filters products.
+    if (_sortColumn == 'category') {
+      filteredProducts.sort((a, b) {
+        final String categoryA =
+            (a['CATEGORY']?['category_name'] ?? '').toString().toLowerCase();
+        final String categoryB =
+            (b['CATEGORY']?['category_name'] ?? '').toString().toLowerCase();
+        final int comparison = categoryA.compareTo(categoryB);
+        return _sortAscending ? comparison : -comparison;
+      });
+    } else if (_sortColumn == 'stock') {
+      filteredProducts.sort((a, b) {
+        final int comparison =
+            _stockValueForSort(a).compareTo(_stockValueForSort(b));
+        return _sortAscending ? comparison : -comparison;
+      });
+    }
 
     if (_isLoading) {
       return const Scaffold(
@@ -678,10 +791,10 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                           _headerItem('Image'),
                           _headerItem('Product Name', flex: 2),
                           _headerItem('Price'),
-                          _headerItem('Category', flex: 2),
+                          _sortableHeaderItem('Category', sortColumn: 'category', flex: 2),
                           _headerItem('Color/Variant', flex: 2),
                           _headerItem('Description', flex: 3),
-                          _headerItem('Stock'),
+                          _sortableHeaderItem('Stock', sortColumn: 'stock'),
                           _headerItem('Edit'),
                           _headerItem('Archive'),
                         ],

@@ -629,7 +629,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
                                     borderRadius: BorderRadius.circular(10)),
                                 elevation: 0,
                               ),
-                              child: const Text("Payed Order Slip"),
+                              child: const Text("Paid Order Slip"),
                             ),
                             const SizedBox(width: 12),
                             ElevatedButton(

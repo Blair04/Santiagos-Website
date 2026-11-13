@@ -163,6 +163,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'PREORDER_ITEMS',
       'RECEIPT',
       'FURNITURE',
+      'VARIANT',
       'CATEGORY',
     ]) {
       channel.onPostgresChanges(
@@ -217,7 +218,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _supabase.from('PREORDER').select('preorder_id, status, total_price, preordered_at'),
         _supabase
             .from('FURNITURE')
-            .select('furniture_id, furniture_name, stock, category_id')
+            .select('''
+              furniture_id,
+              furniture_name,
+              stock,
+              category_id,
+              VARIANT ( variant_id, stock, is_archived, color )
+            ''')
             .eq('is_archived', false),
         _supabase
             .from('CATEGORY')
@@ -341,7 +348,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${_greetingFor(now)}, Manager! 👋',
+          '${_greetingFor(now)}, Manager!',
           style: TextStyle(
             fontSize: isMobile ? 28 : 34,
             fontWeight: FontWeight.w800,
@@ -389,7 +396,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(width: 7),
                 Text(
-                  'Updated ${_formatTime(_lastUpdated!)}',
+                  'Updated at  ${_formatTime(_lastUpdated!)}',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey.shade700,
@@ -1184,12 +1191,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   DataColumn(label: Text('Status')),
                 ],
                 rows: receipts.map((receipt) {
-                  final status = receipt.status.isEmpty
+                  final normalizedStatus = _normalizeStatus(receipt.status);
+                  final status = normalizedStatus.isEmpty
                       ? 'Pending'
-                      : '${receipt.status[0].toUpperCase()}${receipt.status.substring(1)}';
-                  final color = _isCompletedStatus(status)
+                      : normalizedStatus == 'cancelled' || normalizedStatus == 'canceled'
+                          ? 'Cancelled'
+                          : normalizedStatus == 'completed'
+                              ? 'Completed'
+                              : '${normalizedStatus[0].toUpperCase()}${normalizedStatus.substring(1)}';
+                  final color = _isCompletedStatus(normalizedStatus)
                       ? _sage
-                      : _isCancelledStatus(status)
+                      : _isCancelledStatus(normalizedStatus)
                           ? _mutedRed
                           : _bronze;
                   return DataRow(cells: [
@@ -1270,13 +1282,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Stock overview built from the current active FURNITURE rows.
-  /// Category totals, low-stock products, and out-of-stock products are
+  /// Stock overview built from active VARIANT stock grouped by category.
+  /// Category totals, low-stock categories, and out-of-stock categories are
   /// calculated in DashboardData.fromRows and refreshed by the existing
   /// Supabase realtime subscription.
   Widget _buildStockOverviewSection(DashboardData data) {
     final lowStockItems = data.stockAlerts
-        .where((item) => item.stockLeft > 0 && item.stockLeft <= 5)
+        .where((item) => item.stockLeft == 2)
         .toList()
       ..sort((a, b) {
         final stockComparison = a.stockLeft.compareTo(b.stockLeft);
@@ -1328,21 +1340,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     Widget categoryRows() {
-      if (data.categoryStock.isEmpty) {
+      // Only categories with at least one available unit belong in In Stock.
+      final inStockCategories = data.categoryStock
+          .where((category) => category.stockUnits > 0)
+          .toList();
+
+      if (inStockCategories.isEmpty) {
         return Text(
-          'No category stock available.',
+          'No furniture currently in stock.',
           style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
         );
       }
 
       return Column(
         children: [
-          for (var index = 0; index < data.categoryStock.length; index++) ...[
+          for (var index = 0; index < inStockCategories.length; index++) ...[
             Row(
               children: [
                 Expanded(
                   child: Text(
-                    data.categoryStock[index].name,
+                    inStockCategories[index].name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -1354,16 +1371,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '${data.categoryStock[index].stockUnits} units',
-                  style: TextStyle(
-                    color: const Color(0xFF63866C),
+                  '${inStockCategories[index].stockUnits} units',
+                  style: const TextStyle(
+                    color: Color(0xFF63866C),
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
             ),
-            if (index != data.categoryStock.length - 1)
+            if (index != inStockCategories.length - 1)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Divider(
@@ -1451,7 +1468,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         background: const Color(0xFFFBF3E8),
         content: furnitureRows(
           lowStockItems,
-          emptyMessage: 'No low-stock furniture.',
+          emptyMessage: 'No low-stock furniture',
           valueColor: const Color(0xFFBE8746),
           valueLabel: (stock) => '$stock left',
         ),
@@ -1463,7 +1480,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         background: const Color(0xFFFAEEEE),
         content: furnitureRows(
           outOfStockItems,
-          emptyMessage: 'No out of stock',
+          emptyMessage: 'No out of stock furniture',
           valueColor: const Color(0xFFC45F58),
           valueLabel: (_) => '0 left',
         ),
@@ -1513,57 +1530,86 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ],
                 ),
               ),
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF6EDE3),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: const Icon(
-                  Icons.inventory_2_outlined,
-                  color: Color(0xFF987044),
-                  size: 25,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton.icon(
+                    onPressed: widget.onViewProducts,
+                    icon: const Icon(Icons.arrow_outward_rounded, size: 16),
+                    label: const Text('View Stock'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF987044),
+                      textStyle: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 10,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF6EDE3),
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: const Icon(
+                      Icons.inventory_2_outlined,
+                      color: Color(0xFF987044),
+                      size: 25,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
           const SizedBox(height: 18),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: BoxDecoration(
               color: const Color(0xFFFBF8F5),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  'TOTAL STOCK UNITS',
-                  style: TextStyle(
-                    color: Colors.grey.shade700,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'TOTAL STOCK UNITS',
+                        style: TextStyle(
+                          color: Colors.grey.shade700,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Units across all active products',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 7),
+                const SizedBox(width: 12),
                 Text(
                   _formatCount(data.totalStockCount),
                   style: const TextStyle(
                     color: _ink,
-                    fontSize: 30,
+                    fontSize: 29,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'Units across all active products',
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 13,
                   ),
                 ),
               ],
@@ -1592,35 +1638,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               );
             },
-          ),
-          const SizedBox(height: 17),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Monitor your furniture inventory',
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: widget.onViewProducts,
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF987044),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 8,
-                  ),
-                  textStyle: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                child: const Text('View Stock  →'),
-              ),
-            ],
           ),
         ],
       ),
@@ -2315,37 +2332,62 @@ class DashboardData {
     var lowStockCount = 0;
     var outOfStockCount = 0;
     final stockAlerts = <FurnitureStockAlert>[];
+
     final categoryById = <String, String>{
       for (final category in categoryRows)
         '${category['category_id']}':
-            category['category_name']?.toString().trim() ?? 'Uncategorized',
-    };
-    final categoryStockByName = <String, int>{
-      for (final name in categoryById.values) name: 0,
+            category['category_name']?.toString().trim().isNotEmpty == true
+                ? category['category_name'].toString().trim()
+                : 'Uncategorized',
     };
 
-    // Negative or invalid stock values are treated as zero. Items with five or
-    // fewer units are retained for the low-stock panel.
+    // Keep every category in the map, including categories whose stock is zero.
+    final categoryStockByName = <String, int>{
+      for (final name in categoryById.values.toSet()) name: 0,
+    };
+
+    // Stock belongs to VARIANT for variant-backed furniture. Only active
+    // variants are counted. A furniture row with no variants uses its legacy
+    // FURNITURE.stock value as a fallback.
     for (final furniture in furnitureRows) {
-      final stock = math.max(_asInt(furniture['stock']), 0);
+      final rawVariants = furniture['VARIANT'] ?? furniture['variant'];
+      final variants = rawVariants is List ? rawVariants : <dynamic>[];
+      final activeVariants = variants.where((variant) {
+        if (variant is! Map) return false;
+        return variant['is_archived'] != true;
+      }).toList();
+
+      final int furnitureStock;
+      if (activeVariants.isNotEmpty) {
+        furnitureStock = activeVariants.fold<int>(
+          0,
+          (sum, variant) =>
+              sum + math.max(_asInt((variant as Map)['stock']), 0),
+        );
+      } else {
+        furnitureStock = math.max(_asInt(furniture['stock']), 0);
+      }
+
       final categoryName =
           categoryById['${furniture['category_id']}'] ?? 'Uncategorized';
-      totalStockCount += stock;
+
+      totalStockCount += furnitureStock;
       categoryStockByName.update(
         categoryName,
-        (value) => value + stock,
-        ifAbsent: () => stock,
+        (value) => value + furnitureStock,
+        ifAbsent: () => furnitureStock,
       );
+    }
 
-      if (stock <= 5) {
+    // The Stock Overview alert rules are category-based: exactly 2 units is
+    // low stock, while 0 units is out of stock.
+    for (final entry in categoryStockByName.entries) {
+      final stock = entry.value;
+      if (stock <= 2) {
         lowStockCount++;
         if (stock == 0) outOfStockCount++;
         stockAlerts.add(
-          FurnitureStockAlert(
-            furnitureName:
-                furniture['furniture_name']?.toString() ?? 'Unnamed furniture',
-            stockLeft: stock,
-          ),
+          FurnitureStockAlert(furnitureName: entry.key, stockLeft: stock),
         );
       } else {
         inStockCount++;
