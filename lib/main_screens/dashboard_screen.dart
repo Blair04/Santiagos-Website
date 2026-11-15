@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// Products with 1..this many units are "low stock"; 0 is "out of stock".
+const int _lowStockThreshold = 2;
+
 /// Totals used by both the preorder summary card and status donut chart.
 class PreorderSummary {
   final int pendingCount;
@@ -530,8 +533,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Supabase reads. Detailed preorder and stock panels remain available below.
   /// A refresh error keeps the previous data visible and adds a warning above
   /// it instead of replacing the dashboard with an empty error screen.
-  
-    Widget _buildDashboardContent(DashboardData data) {
+  Widget _buildDashboardContent(DashboardData data) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1283,23 +1285,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Stock overview built from active VARIANT stock grouped by category.
-  /// Category totals, low-stock categories, and out-of-stock categories are
-  /// calculated in DashboardData.fromRows and refreshed by the existing
-  /// Supabase realtime subscription.
+  /// Stock overview built from active VARIANT stock, grouped per product.
+  /// Each product lands in exactly one panel:
+  ///   out of stock = 0 units, low stock = 1.._lowStockThreshold units,
+  ///   in stock = more than _lowStockThreshold units.
+  /// Classification happens in DashboardData.fromRows and refreshes through
+  /// the existing Supabase realtime subscription.
   Widget _buildStockOverviewSection(DashboardData data) {
-    final lowStockItems = data.stockAlerts
-        .where((item) => item.stockLeft == 2)
+    final lowStockItems = data.productStock
+        .where((p) => p.stockLeft > 0 && p.stockLeft <= _lowStockThreshold)
         .toList()
       ..sort((a, b) {
-        final stockComparison = a.stockLeft.compareTo(b.stockLeft);
-        if (stockComparison != 0) return stockComparison;
-        return a.furnitureName.compareTo(b.furnitureName);
+        final c = a.stockLeft.compareTo(b.stockLeft);
+        return c != 0 ? c : a.furnitureName.compareTo(b.furnitureName);
       });
 
-    final outOfStockItems = data.stockAlerts
-        .where((item) => item.stockLeft == 0)
-        .toList();
+    final outOfStockItems = data.productStock
+        .where((p) => p.stockLeft <= 0)
+        .toList()
+      ..sort((a, b) => a.furnitureName.compareTo(b.furnitureName));
+
+    final inStockItems = data.productStock
+        .where((p) => p.stockLeft > _lowStockThreshold)
+        .toList()
+      ..sort((a, b) {
+        final c = b.stockLeft.compareTo(a.stockLeft);
+        return c != 0 ? c : a.furnitureName.compareTo(b.furnitureName);
+      });
 
     Widget panel({
       required String title,
@@ -1337,60 +1349,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             content,
           ],
         ),
-      );
-    }
-
-    Widget categoryRows() {
-      // Only categories with at least one available unit belong in In Stock.
-      final inStockCategories = data.categoryStock
-          .where((category) => category.stockUnits > 0)
-          .toList();
-
-      if (inStockCategories.isEmpty) {
-        return Text(
-          'No furniture currently in stock.',
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-        );
-      }
-
-      return Column(
-        children: [
-          for (var index = 0; index < inStockCategories.length; index++) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    inStockCategories[index].name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _ink,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${inStockCategories[index].stockUnits} units',
-                  style: const TextStyle(
-                    color: Color(0xFF63866C),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-            if (index != inStockCategories.length - 1)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Divider(
-                  height: 1,
-                  color: const Color(0xFF63866C).withValues(alpha: 0.14),
-                ),
-              ),
-          ],
-        ],
       );
     }
 
@@ -1460,7 +1418,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.check_circle_outline_rounded,
         color: const Color(0xFF63866C),
         background: const Color(0xFFEEF5EF),
-        content: categoryRows(),
+        content: furnitureRows(
+          inStockItems,
+          emptyMessage: 'No furniture currently in stock.',
+          valueColor: const Color(0xFF63866C),
+          valueLabel: (stock) => '$stock units',
+        ),
       ),
       panel(
         title: 'Low Stock',
@@ -1968,7 +1931,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildStockAlertSection(List<FurnitureStockAlert> stockAlerts) {
     return _buildContentSectionContainer(
       title: 'Low Stock Snapshot',
-      subtitle: 'Catalog items with 5 or fewer units recorded',
+      subtitle: 'Catalog items with $_lowStockThreshold or fewer units recorded',
       child: stockAlerts.isEmpty
           ? _buildEmptySection(
               icon: Icons.inventory_2_outlined,
@@ -2214,6 +2177,8 @@ class DashboardData {
   final List<CategoryStockMetric> categoryStock;
   final List<TopPreorderItem> topPreorders;
   final List<FurnitureStockAlert> stockAlerts;
+  /// Every active product with its current stock (used by Stock Overview).
+  final List<FurnitureStockAlert> productStock;
   final List<DailyPreorderActivity> weeklyActivity;
   final List<DailyRevenueMetric> weeklyRevenue;
   final List<RecentReceiptMetric> recentReceipts;
@@ -2236,6 +2201,7 @@ class DashboardData {
     required this.categoryStock,
     required this.topPreorders,
     required this.stockAlerts,
+    required this.productStock,
     required this.weeklyActivity,
     required this.weeklyRevenue,
     required this.recentReceipts,
@@ -2265,6 +2231,7 @@ class DashboardData {
       categoryStock: const [],
       topPreorders: const [],
       stockAlerts: const [],
+      productStock: const [],
       weeklyRevenue: List.generate(7, (index) => DailyRevenueMetric(date: today.subtract(Duration(days: 6 - index)), amount: 0)),
       weeklyActivity: List.generate(
         7,
@@ -2333,6 +2300,7 @@ class DashboardData {
     var lowStockCount = 0;
     var outOfStockCount = 0;
     final stockAlerts = <FurnitureStockAlert>[];
+    final productStock = <FurnitureStockAlert>[];
 
     final categoryById = <String, String>{
       for (final category in categoryRows)
@@ -2371,6 +2339,10 @@ class DashboardData {
 
       final categoryName =
           categoryById['${furniture['category_id']}'] ?? 'Uncategorized';
+      final productName =
+          furniture['furniture_name']?.toString().trim().isNotEmpty == true
+              ? furniture['furniture_name'].toString().trim()
+              : 'Unnamed product';
 
       totalStockCount += furnitureStock;
       categoryStockByName.update(
@@ -2378,18 +2350,21 @@ class DashboardData {
         (value) => value + furnitureStock,
         ifAbsent: () => furnitureStock,
       );
-    }
 
-    // The Stock Overview alert rules are category-based: exactly 2 units is
-    // low stock, while 0 units is out of stock.
-    for (final entry in categoryStockByName.entries) {
-      final stock = entry.value;
-      if (stock <= 2) {
+      // Per-product classification for the Stock Overview.
+      final product = FurnitureStockAlert(
+        furnitureName: productName,
+        stockLeft: furnitureStock,
+      );
+      productStock.add(product);
+
+      if (furnitureStock <= 0) {
+        outOfStockCount++;
         lowStockCount++;
-        if (stock == 0) outOfStockCount++;
-        stockAlerts.add(
-          FurnitureStockAlert(furnitureName: entry.key, stockLeft: stock),
-        );
+        stockAlerts.add(product);
+      } else if (furnitureStock <= _lowStockThreshold) {
+        lowStockCount++;
+        stockAlerts.add(product);
       } else {
         inStockCount++;
       }
@@ -2609,6 +2584,7 @@ class DashboardData {
       categoryStock: categoryStock.take(5).toList(),
       topPreorders: topPreorders.take(5).toList(),
       stockAlerts: stockAlerts.take(5).toList(),
+      productStock: productStock,
       weeklyActivity: weeklyActivity,
       weeklyRevenue: weeklyRevenue,
       recentReceipts: recentReceipts.take(5).toList(),
