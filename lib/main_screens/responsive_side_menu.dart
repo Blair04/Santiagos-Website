@@ -19,7 +19,7 @@ class MainResponsivePage extends StatefulWidget {
 }
 
 class _MainResponsivePageState extends State<MainResponsivePage> {
-  static const String _localAvatarKey = 'adminProfileAvatarBase64';
+  static const String _localAvatarKey = 'santiagoBusinessLogoBase64';
   int _selectedIndex = 0;
   bool _isDrawerOpen = false;
   Uint8List? _profileAvatarBytes;

@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,11 +23,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isPasswordVisible = false;
   bool _isLoading = false;
 
-  final TextEditingController _emailController =
-      TextEditingController();
-
-  final TextEditingController _passwordController =
-      TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
   final SupabaseClient _supabase = Supabase.instance.client;
 
@@ -42,8 +38,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _checkSavedSession() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final bool isAdminLoggedIn =
-        prefs.getBool('isAdminLoggedIn') ?? false;
+    final bool isAdminLoggedIn = prefs.getBool('isAdminLoggedIn') ?? false;
 
     final session = _supabase.auth.currentSession;
 
@@ -57,7 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // Supabase login functionality.
+  // Supabase Auth login functionality.
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -75,8 +70,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final response =
-          await _supabase.auth.signInWithPassword(
+      final response = await _supabase.auth.signInWithPassword(
         email: email,
         password: password,
       );
@@ -145,8 +139,7 @@ class _LoginScreenState extends State<LoginScreen> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final bool isDesktop =
-              constraints.maxWidth >= 780 &&
-              constraints.maxHeight >= 450;
+              constraints.maxWidth >= 780 && constraints.maxHeight >= 450;
 
           if (isDesktop) {
             return _buildDesktopLayout(constraints);
@@ -184,16 +177,15 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
 
         // Santiago's Furniture logo centered in the left area.
-        
-Positioned(
-  left: width * 0.075,
-  width: width * 0.48,
-  top: 0,
-  bottom: 0,
-  child: Center(
-    child: _buildLogo(),
-  ),
-),
+        Positioned(
+          left: width * 0.075,
+          width: width * 0.48,
+          top: 0,
+          bottom: 0,
+          child: Center(
+            child: _buildLogo(),
+          ),
+        ),
 
         // Login form on the right side.
         Positioned(
@@ -262,29 +254,29 @@ Positioned(
     );
   }
 
-Widget _buildLogo() {
-  return ConstrainedBox(
-    constraints: const BoxConstraints(
-      maxWidth: 560,
-    ),
-    child: Image.asset(
-      'assets/images/santiago_logo_fitted.png',
-      width: 560,
-      fit: BoxFit.contain,
-      errorBuilder: (context, error, stackTrace) {
-        return const Text(
-          "SANTIAGO'S FURNITURE",
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: _darkBrown,
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-          ),
-        );
-      },
-    ),
-  );
-}
+  Widget _buildLogo() {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(
+        maxWidth: 560,
+      ),
+      child: Image.asset(
+        'assets/images/santiago_logo_fitted.png',
+        width: 560,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) {
+          return const Text(
+            "SANTIAGO'S FURNITURE",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: _darkBrown,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   Widget _buildLoginForm() {
     return Column(
@@ -292,16 +284,16 @@ Widget _buildLogo() {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
-  'Welcome Back!',
-  textAlign: TextAlign.center,
-  style: TextStyle(
-    fontSize: 28,
-    fontWeight: FontWeight.bold,
-    color: _darkBrown,
-  ),
-),
+          'Welcome Back!',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: _darkBrown,
+          ),
+        ),
 
-const SizedBox(height: 30),
+        const SizedBox(height: 30),
 
         // EMAIL
         const Text(
@@ -377,8 +369,7 @@ const SizedBox(height: 30),
               ),
               onPressed: () {
                 setState(() {
-                  _isPasswordVisible =
-                      !_isPasswordVisible;
+                  _isPasswordVisible = !_isPasswordVisible;
                 });
               },
             ),
@@ -395,16 +386,14 @@ const SizedBox(height: 30),
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) =>
-                      const ForgotPasswordScreen(),
+                  builder: (context) => const ForgotPasswordScreen(),
                 ),
               );
             },
             style: TextButton.styleFrom(
               padding: EdgeInsets.zero,
               minimumSize: const Size(50, 30),
-              tapTargetSize:
-                  MaterialTapTargetSize.shrinkWrap,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: const Text(
               'Forgot Password?',
@@ -429,8 +418,7 @@ const SizedBox(height: 30),
             style: ElevatedButton.styleFrom(
               backgroundColor: _accent,
               foregroundColor: _darkBrown,
-              disabledBackgroundColor:
-                  _accent.withOpacity(0.7),
+              disabledBackgroundColor: _accent.withOpacity(0.7),
               elevation: 2,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(11),
@@ -442,8 +430,7 @@ const SizedBox(height: 30),
                     height: 21,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(
+                      valueColor: AlwaysStoppedAnimation<Color>(
                         _darkBrown,
                       ),
                     ),
@@ -472,14 +459,12 @@ const SizedBox(height: 30),
                 color: _labelBrown,
               ),
             ),
-
             GestureDetector(
               onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) =>
-                        const RegisterScreen(),
+                    builder: (context) => const RegisterScreen(),
                   ),
                 );
               },
@@ -535,7 +520,6 @@ const SizedBox(height: 30),
     );
   }
 }
-
 
 class _LoginCircleClipper extends CustomClipper<Path> {
   @override

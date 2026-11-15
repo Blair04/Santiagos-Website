@@ -530,7 +530,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Supabase reads. Detailed preorder and stock panels remain available below.
   /// A refresh error keeps the previous data visible and adds a warning above
   /// it instead of replacing the dashboard with an empty error screen.
-  Widget _buildDashboardContent(DashboardData data) {
+  
+    Widget _buildDashboardContent(DashboardData data) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -540,14 +541,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
         _buildSummaryGrid(data),
         const SizedBox(height: 24),
+        _buildStockOverviewSection(data),
+        const SizedBox(height: 24),
         _buildResponsivePair(
           leftFlex: 3,
           rightFlex: 2,
           left: _buildSalesActivitySection(data),
           right: _buildOrderSlipStatusSection(data.preorderStats),
         ),
-        const SizedBox(height: 24),
-        _buildStockOverviewSection(data),
         const SizedBox(height: 24),
         _buildResponsivePair(
           leftFlex: 3,

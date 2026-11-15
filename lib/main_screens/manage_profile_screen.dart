@@ -7,7 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Lets the signed-in manager update the business logo and login credentials
-/// without changing the application's existing Supabase project structure.
+/// through Supabase Auth. Email and password changes are also mirrored into
+/// the `managers` table so the visible columns stay in sync.
 class ManageProfileScreen extends StatefulWidget {
   final VoidCallback? onProfileUpdated;
 
@@ -40,11 +41,6 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   bool _isUpdatingPassword = false;
   bool _showPasswords = false;
 
-  // --- Manager connection ---
-  String? _managerBranchId; // branch_id from the managers row
-  bool _managerLinked = false; // true once the managers row is found & active
-
-
   User? get _currentUser => _supabase.auth.currentUser;
 
   // A strong password must satisfy every rule below.
@@ -73,39 +69,16 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _emailController.text = _currentUser?.email ?? '';
     _passwordController.addListener(_refreshPasswordFeedback);
     _confirmPasswordController.addListener(_refreshPasswordFeedback);
-    _remoteAvatarUrl = _currentUser?.userMetadata?['business_logo_url']
-        ?.toString()
-        .trim();
+    _emailController.text = _currentUser?.email ?? '';
+    _remoteAvatarUrl =
+        _currentUser?.userMetadata?['business_logo_url']?.toString().trim();
     _loadLocalAvatar();
-    _loadManagerLink();
   }
 
   void _refreshPasswordFeedback() {
     if (mounted) setState(() {});
-  }
-
-  /// Finds the managers row whose id matches the signed-in Auth user
-  /// and remembers its branch_id.
-  Future<void> _loadManagerLink() async {
-    final user = _currentUser;
-    if (user == null) return;
-    try {
-      final row = await _supabase
-          .from('managers')
-          .select('id, branch_id, is_active')
-          .eq('id', user.id)
-          .maybeSingle();
-      if (!mounted) return;
-      setState(() {
-        _managerLinked = row != null && row['is_active'] == true;
-        _managerBranchId = row?['branch_id']?.toString();
-      });
-    } catch (_) {
-      // Leave unlinked; the update methods will report it.
-    }
   }
 
   Future<void> _loadLocalAvatar() async {
@@ -120,13 +93,10 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   }
 
   /// Saves the selected photo locally first, then attempts to synchronize it
-  /// with an existing `avatars` bucket. Local persistence keeps the feature
-  /// usable without adding a bucket, policy, or other Supabase structure.
+  /// with an existing `avatars` bucket.
   Future<void> _pickAndUploadAvatar() async {
     final image = await _imagePicker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 1200,
-      imageQuality: 82,
     );
     if (image == null) return;
 
@@ -175,8 +145,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
         _remoteAvatarUrl = publicUrl;
         synchronized = true;
       } catch (_) {
-        // The existing project may not have an avatars bucket. The local copy
-        // remains available and no backend structure is created automatically.
+        // No avatars bucket / policy: the local copy remains available.
       }
     }
 
@@ -192,11 +161,17 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
 
   Future<void> _updateEmail() async {
     final email = _emailController.text.trim();
+    final user = _currentUser;
+    if (user == null) {
+      _showMessage('Auth session missing. Please log in again.', _mutedRed);
+      return;
+    }
     if (!_isValidEmail(email)) {
       _showMessage('Enter a valid email address.', _mutedRed);
       return;
     }
-    if (email == _currentUser?.email) {
+    final oldEmail = user.email;
+    if (email == oldEmail) {
       _showMessage('This is already your current email.', _bronze);
       return;
     }
@@ -206,14 +181,14 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
       await _supabase.auth.updateUser(UserAttributes(email: email));
 
       // If email confirmation is off, Auth changes the email right away,
-      // so mirror it into managers (same id and branch_id).
-      final updatedEmail = _supabase.auth.currentUser?.email;
-      if (updatedEmail == email && _managerBranchId != null) {
-        await _supabase
-            .from('managers')
-            .update({'email': email})
-            .eq('id', _currentUser!.id)
-            .eq('branch_id', _managerBranchId!);
+      // so mirror it into the managers table too.
+      if (_supabase.auth.currentUser?.email == email && oldEmail != null) {
+        try {
+          await _supabase
+              .from('managers')
+              .update({'email': email})
+              .eq('email', oldEmail);
+        } catch (_) {}
       }
 
       if (!mounted) return;
@@ -234,6 +209,8 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   Future<void> _updatePassword() async {
     final password = _passwordController.text;
     final confirmation = _confirmPasswordController.text;
+    final user = _currentUser;
+
     if (!_isStrongPassword) {
       _showMessage(
         'Create a strong password by meeting all five security requirements.',
@@ -245,18 +222,26 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
       _showMessage('The password confirmation does not match.', _mutedRed);
       return;
     }
-    if (!_managerLinked || _managerBranchId == null) {
-      _showMessage(
-        'No active manager account is linked to this login.',
-        _mutedRed,
-      );
+    if (user == null) {
+      _showMessage('Auth session missing. Please log in again.', _mutedRed);
       return;
     }
 
     setState(() => _isUpdatingPassword = true);
     try {
-      // The login password lives in Supabase Auth, tied to this user's id.
+      // The login password lives in Supabase Auth.
       await _supabase.auth.updateUser(UserAttributes(password: password));
+
+      // Mirror into the managers table so the visible column stays in sync.
+      final email = user.email;
+      if (email != null) {
+        try {
+          await _supabase
+              .from('managers')
+              .update({'password': password})
+              .eq('email', email);
+        } catch (_) {}
+      }
 
       _passwordController.clear();
       _confirmPasswordController.clear();
@@ -808,26 +793,6 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
       height: 17,
       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
     );
-  }
-
-  String _memberSinceLabel(User? user) {
-    final created = DateTime.tryParse(user?.createdAt ?? '')?.toLocal();
-    if (created == null) return 'Authenticated administrator';
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return 'Member since ${months[created.month - 1]} ${created.year}';
   }
 
   @override
