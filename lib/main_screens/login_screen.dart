@@ -168,18 +168,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
         // Large cream circular/curved area on the left.
         Positioned.fill(
-          child: ClipPath(
+          child: PhysicalShape(
             clipper: _LoginCircleClipper(),
-            child: Container(
-              color: _cream,
-            ),
+            color: _cream,
+            elevation: 2,
+            shadowColor: _darkBrown.withOpacity(0.10),
+            child: const SizedBox.expand(),
           ),
         ),
 
         // Santiago's Furniture logo centered in the left area.
         Positioned(
           left: width * 0.075,
-          width: width * 0.48,
+          width: width * 0.43,
           top: 0,
           bottom: 0,
           child: Center(
@@ -261,7 +262,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
       child: Image.asset(
         'assets/images/santiago_logo_fitted.png',
-        width: 560,
+        width: 450,
         fit: BoxFit.contain,
         errorBuilder: (context, error, stackTrace) {
           return const Text(
@@ -526,31 +527,27 @@ class _LoginCircleClipper extends CustomClipper<Path> {
   Path getClip(Size size) {
     final path = Path();
 
+    // Start the cream panel along the upper edge, as in the reference.
     path.moveTo(0, 0);
+    path.lineTo(size.width * 0.15, 0);
 
-    // Start of the curved circle at the top.
-    path.lineTo(size.width * 0.16, 0);
-
-    // Large rounded curve on the right side.
+    // A broad, restrained circular arc. These control points keep the
+    // right edge near 61-62% of the screen width, so it does not overlap
+    // the email/password fields as it did in the previous output.
     path.cubicTo(
-      size.width * 0.92,
-      size.height * 0.05,
-      size.width * 0.92,
-      size.height * 0.95,
-      size.width * 0.16,
+      size.width * 0.63,
+      size.height * 0.015,
+      size.width * 0.66,
+      size.height * 0.84,
+      size.width * 0.58,
       size.height,
     );
 
     path.lineTo(0, size.height);
     path.close();
-
     return path;
   }
 
   @override
-  bool shouldReclip(
-    covariant CustomClipper<Path> oldClipper,
-  ) {
-    return false;
-  }
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }

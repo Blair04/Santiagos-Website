@@ -5,10 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'email_change_otp_screen.dart';
 
 /// Lets the signed-in manager update the business logo and login credentials
-/// through Supabase Auth. Email and password changes are also mirrored into
-/// the `managers` table so the visible columns stay in sync.
+/// through Supabase Auth. Email changes are mirrored into `managers` only
+/// after Supabase confirms both email-change OTPs.
 class ManageProfileScreen extends StatefulWidget {
   final VoidCallback? onProfileUpdated;
 
@@ -29,7 +30,6 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
 
   final SupabaseClient _supabase = Supabase.instance.client;
   final ImagePicker _imagePicker = ImagePicker();
-  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
@@ -71,7 +71,6 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
     super.initState();
     _passwordController.addListener(_refreshPasswordFeedback);
     _confirmPasswordController.addListener(_refreshPasswordFeedback);
-    _emailController.text = _currentUser?.email ?? '';
     _remoteAvatarUrl =
         _currentUser?.userMetadata?['business_logo_url']?.toString().trim();
     _loadLocalAvatar();
@@ -160,47 +159,124 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   }
 
   Future<void> _updateEmail() async {
-    final email = _emailController.text.trim();
     final user = _currentUser;
-    if (user == null) {
-      _showMessage('Auth session missing. Please log in again.', _mutedRed);
+    if (user == null || user.email == null) {
+      _showMessage('Your session has expired. Please log in again.', _mutedRed);
       return;
     }
-    if (!_isValidEmail(email)) {
+
+    final newEmailController = TextEditingController();
+    final currentPasswordController = TextEditingController();
+    var obscurePassword = true;
+
+    final request = await showDialog<Map<String, String>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: _background,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Text('Change Email Address', style: TextStyle(color: _ink, fontWeight: FontWeight.bold)),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Current email: ${user.email}', style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
+                const SizedBox(height: 18),
+                const Text('New email address', style: TextStyle(color: _ink, fontWeight: FontWeight.w700, fontSize: 12)),
+                const SizedBox(height: 7),
+                TextField(
+                  controller: newEmailController,
+                  keyboardType: TextInputType.emailAddress,
+                  autofillHints: const [AutofillHints.email],
+                  decoration: _inputDecoration(hintText: 'Enter your new email', icon: Icons.mail_outline_rounded),
+                ),
+                const SizedBox(height: 16),
+                const Text('Current password', style: TextStyle(color: _ink, fontWeight: FontWeight.w700, fontSize: 12)),
+                const SizedBox(height: 7),
+                TextField(
+                  controller: currentPasswordController,
+                  obscureText: obscurePassword,
+                  decoration: _inputDecoration(hintText: 'Confirm your current password', icon: Icons.lock_outline_rounded).copyWith(
+                    suffixIcon: IconButton(
+                      onPressed: () => setDialogState(() => obscurePassword = !obscurePassword),
+                      icon: Icon(obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text('We will send verification codes to your current and new email addresses.', style: TextStyle(color: Colors.grey.shade700, fontSize: 12, height: 1.4)),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: _darkBrown, foregroundColor: Colors.white),
+              onPressed: () {
+                Navigator.pop(dialogContext, {
+                  'email': newEmailController.text.trim(),
+                  'password': currentPasswordController.text,
+                });
+              },
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    newEmailController.dispose();
+    currentPasswordController.dispose();
+    if (request == null) return;
+
+    final newEmail = request['email'] ?? '';
+    final currentPassword = request['password'] ?? '';
+    if (!_isValidEmail(newEmail)) {
       _showMessage('Enter a valid email address.', _mutedRed);
       return;
     }
-    final oldEmail = user.email;
-    if (email == oldEmail) {
+    if (newEmail.toLowerCase() == user.email!.toLowerCase()) {
       _showMessage('This is already your current email.', _bronze);
+      return;
+    }
+    if (currentPassword.isEmpty) {
+      _showMessage('Enter your current password to continue.', _mutedRed);
       return;
     }
 
     setState(() => _isUpdatingEmail = true);
     try {
-      await _supabase.auth.updateUser(UserAttributes(email: email));
-
-      // If email confirmation is off, Auth changes the email right away,
-      // so mirror it into the managers table too.
-      if (_supabase.auth.currentUser?.email == email && oldEmail != null) {
-        try {
-          await _supabase
-              .from('managers')
-              .update({'email': email})
-              .eq('email', oldEmail);
-        } catch (_) {}
+      // Re-authenticate with the current credentials before starting a sensitive change.
+      final authResponse = await _supabase.auth.signInWithPassword(
+        email: user.email!,
+        password: currentPassword,
+      );
+      if (authResponse.user == null || authResponse.user!.id != user.id) {
+        throw Exception('Unable to verify your account. Please sign in again.');
       }
 
+      // Supabase enforces email uniqueness and sends both OTPs because
+      // Secure email change is enabled in the project's Email provider.
+      await _supabase.auth.updateUser(UserAttributes(email: newEmail));
+
       if (!mounted) return;
-      _showMessage(
-        'Email update submitted. Check for a confirmation message if required.',
-        _sage,
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => EmailChangeOtpScreen(
+            oldEmail: user.email!,
+            newEmail: newEmail,
+            userId: user.id,
+          ),
+        ),
       );
       widget.onProfileUpdated?.call();
     } on AuthException catch (error) {
-      _showMessage(error.message, _mutedRed);
-    } catch (_) {
-      _showMessage('The email could not be updated.', _mutedRed);
+      if (mounted) _showMessage(error.message, _mutedRed);
+    } catch (error) {
+      if (mounted) _showMessage('Could not start the email change. Please try again.', _mutedRed);
     } finally {
       if (mounted) setState(() => _isUpdatingEmail = false);
     }
@@ -232,16 +308,8 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
       // The login password lives in Supabase Auth.
       await _supabase.auth.updateUser(UserAttributes(password: password));
 
-      // Mirror into the managers table so the visible column stays in sync.
-      final email = user.email;
-      if (email != null) {
-        try {
-          await _supabase
-              .from('managers')
-              .update({'password': password})
-              .eq('email', email);
-        } catch (_) {}
-      }
+      // Passwords must remain exclusively in Supabase Auth; never store them
+      // as readable values in the managers table.
 
       _passwordController.clear();
       _confirmPasswordController.clear();
@@ -442,28 +510,29 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   }
 
   Widget _buildEmailCard() {
+    final currentEmail = _currentUser?.email ?? 'No email available';
     return _buildSectionCard(
       title: 'Email Address',
       subtitle: 'Update the address used to sign in as manager.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Email',
-            style: TextStyle(
-              color: _ink,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          const Text('Current email', style: TextStyle(color: _ink, fontSize: 12, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
-          TextField(
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
-            autofillHints: const [AutofillHints.email],
-            decoration: _inputDecoration(
-              hintText: 'administrator@example.com',
-              icon: Icons.mail_outline_rounded,
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: const Color(0xFFE0DAD5)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.mail_outline_rounded, size: 18, color: _darkBrown),
+                const SizedBox(width: 10),
+                Expanded(child: Text(currentEmail, style: const TextStyle(color: _ink, fontSize: 14))),
+              ],
             ),
           ),
           const SizedBox(height: 18),
@@ -472,10 +541,8 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
             child: FilledButton.icon(
               onPressed: _isUpdatingEmail ? null : _updateEmail,
               style: _primaryButtonStyle(),
-              icon: _isUpdatingEmail
-                  ? _buttonProgress()
-                  : const Icon(Icons.save_outlined, size: 18),
-              label: const Text('Update email'),
+              icon: _isUpdatingEmail ? _buttonProgress() : const Icon(Icons.edit_outlined, size: 18),
+              label: Text(_isUpdatingEmail ? 'Please wait...' : 'Change email'),
             ),
           ),
         ],
@@ -797,7 +864,6 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
 
   @override
   void dispose() {
-    _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
