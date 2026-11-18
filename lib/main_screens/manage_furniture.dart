@@ -5,7 +5,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 final _supabase = Supabase.instance.client;
 
 class ManageFurniture extends StatefulWidget {
-  const ManageFurniture({super.key});
+  final int? highlightFurnitureId; //add
+  final int highlightStock; //add
+
+  const ManageFurniture({
+    super.key,
+    this.highlightFurnitureId,
+    this.highlightStock = 0,
+  });//add
   static String get routeName => '/manage-furniture';
 
   @override
@@ -13,6 +20,65 @@ class ManageFurniture extends StatefulWidget {
 }
 
 class _ManageFurnitureState extends State<ManageFurniture> {
+  final ScrollController _scrollController = ScrollController();
+final GlobalKey _highlightKey = GlobalKey();
+int? _highlightId;
+int _highlightStock = 0;
+
+
+@override 
+void initState(){
+  super.initState();
+  _highlightId = widget.highlightFurnitureId;
+  _highlightStock = widget.highlightStock;
+  _loadProducts();
+
+}
+
+@override
+void didUpdateWidget(covariant ManageFurniture oldWidget) {
+  super.didUpdateWidget(oldWidget);
+  if (widget.highlightFurnitureId != oldWidget.highlightFurnitureId) {
+    setState(() {
+      _highlightId = widget.highlightFurnitureId;
+      _highlightStock = widget.highlightStock;
+    });
+    _scrollToHighlight();
+  }
+}
+
+void _applyHighlight() {
+  if (widget.highlightFurnitureId != null){
+    setState(() {
+      _highlightId = widget.highlightFurnitureId;
+      _highlightStock = widget.highlightStock;
+    });
+  }
+}
+Color _highlightColorFor(int stock) {
+  if (stock <= 0) return const Color(0xFFD9534F);  // red
+  if (stock <= 2) return const Color(0xFFF0AD4E);  // orange (same threshold as dashboard)
+  return const Color(0xFF438A5E);                  // green
+}
+
+void _scrollToHighlight() {
+  if (_highlightId == null) return;
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    final index = _products.indexWhere((p) => p['furniture_id'] == _highlightId);
+    if (index < 0 || !_scrollController.hasClients) return;
+    // Rows are ~77px; jump close so the row gets built, then fine-tune.
+    _scrollController.jumpTo(
+      (index * 77.0).clamp(0.0, _scrollController.position.maxScrollExtent),
+    );
+    await WidgetsBinding.instance.endOfFrame;
+    final ctx = _highlightKey.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(ctx,
+          duration: const Duration(milliseconds: 300), alignment: 0.3);
+    }
+  });
+}
+
   List<Map<String, dynamic>> _products = [];
   // Archived VARIANT rows (each with its parent FURNITURE embedded)
   List<Map<String, dynamic>> _archivedVariants = [];
@@ -30,14 +96,9 @@ class _ManageFurnitureState extends State<ManageFurniture> {
   bool _sortAscending = true;
 
   @override
-  void initState() {
-    super.initState();
-    _loadProducts();
-  }
-
-  @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -51,6 +112,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
     setState(() {
       _isLoading = true;
       _searchController.clear();
+      _highlightId = null;
       query = "";
     });
     _loadProducts();
@@ -87,6 +149,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
         _products = products;
         _isLoading = false;
       });
+      _scrollToHighlight();
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -809,6 +872,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                               ),
                             )
                           : ListView.builder(
+                              controller: _scrollController,
                               itemCount: filteredProducts.length,
                               itemBuilder: (context, index) {
                                 final item = filteredProducts[index];
@@ -840,8 +904,12 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                                 final String displayStock = currentVariant != null
                                     ? (currentVariant['stock']?.toString() ?? '0')
                                     : (item['stock']?.toString() ?? 'N/A');
-
+                                final bool isHighlighted = furnitureId == _highlightId;
+                                final Color? rowColor = isHighlighted
+                                    ? _highlightColorFor(_highlightStock).withOpacity(0.15)
+                                    : null;
                                 return AnimatedOpacity(
+                                  key: isHighlighted ? _highlightKey : null,
                                   duration: const Duration(milliseconds: 500),
                                   opacity: _animatingArchiveId == furnitureId ? 0.0 : 1.0,
                                   child: AnimatedScale(
@@ -851,6 +919,7 @@ class _ManageFurnitureState extends State<ManageFurniture> {
                                       padding: const EdgeInsets.symmetric(
                                           vertical: 14, horizontal: 8),
                                       decoration: BoxDecoration(
+                                        color: rowColor,
                                         border: Border(
                                           bottom: BorderSide(
                                               color: Colors.brown.withOpacity(0.08)),

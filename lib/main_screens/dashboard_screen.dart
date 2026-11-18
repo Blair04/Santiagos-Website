@@ -26,10 +26,12 @@ class PreorderSummary {
 class FurnitureStockAlert {
   final String furnitureName;
   final int stockLeft;
+  final int? furnitureId; //new
 
   const FurnitureStockAlert({
     required this.furnitureName,
     required this.stockLeft,
+    this.furnitureId, //new
   });
 }
 
@@ -117,12 +119,14 @@ class DashboardScreen extends StatefulWidget {
   final VoidCallback? onViewProducts;
   final VoidCallback? onViewSales;
   final VoidCallback? onViewReceipts;
+  final void Function(int furnitureId, int stockLeft)? onProductSelected; //new
 
   const DashboardScreen({
     super.key,
     this.onViewProducts,
     this.onViewSales,
     this.onViewReceipts,
+    this.onProductSelected,
   });
 
   @override
@@ -264,6 +268,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         categoryRows: _asRows(responses[2]),
         preorderItemRows: _asRows(responses[3]),
         receiptRows: _asRows(responses[4]),
+        
       );
 
       if (!mounted) return;
@@ -1372,7 +1377,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return Column(
         children: [
           for (var index = 0; index < items.length; index++) ...[
-            Row(
+            InkWell(//new
+              borderRadius: BorderRadius.circular(8),//new
+              onTap: items[index].furnitureId == null || widget.onProductSelected == null 
+              ? null 
+              : () => widget. onProductSelected!(
+                items[index].furnitureId!, 
+                items[index].stockLeft, //new
+                ),
+            
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
@@ -1399,6 +1413,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ],
             ),
+          ),
             if (index != items.length - 1)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
@@ -2353,6 +2368,8 @@ class DashboardData {
 
       // Per-product classification for the Stock Overview.
       final product = FurnitureStockAlert(
+        
+        furnitureId: _asInt(furniture['furniture_id']),
         furnitureName: productName,
         stockLeft: furnitureStock,
       );

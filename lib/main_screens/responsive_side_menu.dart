@@ -21,32 +21,14 @@ class MainResponsivePage extends StatefulWidget {
 class _MainResponsivePageState extends State<MainResponsivePage> {
   static const String _localAvatarKey = 'santiagoBusinessLogoBase64';
   int _selectedIndex = 0;
+  int? _highlightFurnitureId;
+  int _highlightStock = 0;
   bool _isDrawerOpen = false;
   Uint8List? _profileAvatarBytes;
-  late final List<Widget> _screens;
-  @override
 
+  @override
   void initState() {
     super.initState();
-    _screens = [
-      DashboardScreen(
-        onViewProducts: () {
-          if (mounted) setState(() => _selectedIndex = 2);
-        },
-        onViewReceipts: () {
-          if (mounted) setState(() => _selectedIndex = 1);
-        },
-        onViewSales: () {
-          if (mounted) setState(() => _selectedIndex = 4);
-        },
-      ),
-
-      ManageReceipt(),
-      ManageFurniture(),
-      ManageCategoryScreen(),
-      ProductsSalesScreen(),
-      ManageProfileScreen(onProfileUpdated: _loadProfileAvatar),
-    ];
     _loadProfileAvatar();
   }
 
@@ -173,6 +155,35 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> screens = [
+      DashboardScreen(
+        onViewProducts: () {
+          if (mounted) setState(() => _selectedIndex = 2);
+        },
+        onViewReceipts: () {
+          if (mounted) setState(() => _selectedIndex = 1);
+        },
+        onViewSales: () {
+          if (mounted) setState(() => _selectedIndex = 4);
+        },
+        onProductSelected: (id, stock) {
+          setState(() {
+            _selectedIndex = 2;
+            _highlightFurnitureId = id;
+            _highlightStock = stock;
+          });
+        },
+      ),
+      ManageReceipt(),
+      ManageFurniture(
+        highlightFurnitureId: _highlightFurnitureId,
+        highlightStock: _highlightStock,
+      ),
+      ManageCategoryScreen(),
+      ProductsSalesScreen(),
+      ManageProfileScreen(onProfileUpdated: _loadProfileAvatar),
+    ];
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isHugeScreen = constraints.maxWidth >= 1200;
@@ -226,7 +237,10 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
                     child: NavigationContent(
                       selectedIndex: _selectedIndex,
                       onItemSelected: (index) {
-                        setState(() => _selectedIndex = index);
+                        setState(() {
+                          _selectedIndex = index;
+                          if (index != 2) _highlightFurnitureId = null;
+                        });
                         Navigator.pop(context);
                       },
 
@@ -251,7 +265,10 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
                       child: NavigationContent(
                         selectedIndex: _selectedIndex,
                         onItemSelected: (index) {
-                          setState(() => _selectedIndex = index);
+                          setState(() {
+                            _selectedIndex = index;
+                            if (index != 2) _highlightFurnitureId = null;
+                          });
                         },
 
                         onLogout: _confirmLogout,
@@ -259,7 +276,7 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
                       ),
                     ),
                   ),
-                Expanded(child: _screens[_selectedIndex]),
+                Expanded(child: screens[_selectedIndex]),
               ],
             ),
           ),
@@ -347,7 +364,6 @@ class NavigationContent extends StatelessWidget {
   }
 
 
-  @override
   @override
   Widget build(BuildContext context) {
     return Container(
