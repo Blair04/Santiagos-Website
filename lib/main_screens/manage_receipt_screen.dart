@@ -4,7 +4,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 final _supabase = Supabase.instance.client;
 
 class ManageReceipt extends StatefulWidget {
-  const ManageReceipt({super.key});
+  final String? initialReceiptId;
+
+  const ManageReceipt({super.key, this.initialReceiptId});
 
   static String get routeName => '/manage-receipt';
 
@@ -28,12 +30,54 @@ class _ManageReceiptState extends State<ManageReceipt> {
   void initState() {
     super.initState();
     _future = _fetchReceipts();
+    _future
+        .then((_) => _openReceiptById(widget.initialReceiptId))
+        .catchError((_) {});
+  }
+
+  @override
+  void didUpdateWidget(covariant ManageReceipt oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialReceiptId != null &&
+        widget.initialReceiptId != oldWidget.initialReceiptId) {
+      setState(() {
+        _future = _fetchReceipts();
+      });
+      _future
+          .then((_) => _openReceiptById(widget.initialReceiptId))
+          .catchError((_) {});
+    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _openReceiptById(String? receiptId) {
+    if (receiptId == null || !mounted) return;
+
+    for (final receipt in _allReceipts) {
+      if (receipt['receipt_id'].toString() != receiptId) continue;
+
+      final dynamic preorderRaw = receipt['PREORDER'] ?? receipt['preorder'];
+      Map<String, dynamic>? preorder;
+
+      if (preorderRaw is List && preorderRaw.isNotEmpty) {
+        preorder = preorderRaw.first;
+      } else if (preorderRaw is Map<String, dynamic>) {
+        preorder = preorderRaw;
+      }
+
+      if (preorder == null) return;
+
+      setState(() {
+        selectedTab = (preorder!['status'] ?? 'Pending').toString();
+      });
+      _showReceiptDetails(receipt, preorder);
+      return;
+    }
   }
 
   void _refresh() {

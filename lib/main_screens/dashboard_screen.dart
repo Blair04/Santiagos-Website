@@ -120,6 +120,7 @@ class DashboardScreen extends StatefulWidget {
   final VoidCallback? onViewSales;
   final VoidCallback? onViewReceipts;
   final void Function(int furnitureId, int stockLeft)? onProductSelected; //new
+  final void Function(String receiptId)? onReceiptSelected;
 
   const DashboardScreen({
     super.key,
@@ -127,6 +128,7 @@ class DashboardScreen extends StatefulWidget {
     this.onViewSales,
     this.onViewReceipts,
     this.onProductSelected,
+    this.onReceiptSelected,
   });
 
   @override
@@ -1190,6 +1192,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
+                showCheckboxColumn: false,
                 headingRowColor: WidgetStatePropertyAll(const Color(0xFFFBF8F5)),
                 columns: const [
                   DataColumn(label: Text('Slip ID')),
@@ -1212,7 +1215,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       : _isCancelledStatus(normalizedStatus)
                           ? _mutedRed
                           : _bronze;
-                  return DataRow(cells: [
+                  return DataRow(
+                    onSelectChanged: widget.onReceiptSelected == null
+                        ? null
+                        : (_) => widget.onReceiptSelected!(receipt.receiptId),
+                    cells: [
                     DataCell(Text('#${receipt.receiptId}')),
                     DataCell(Text(receipt.customerName, overflow: TextOverflow.ellipsis)),
                     DataCell(Text(receipt.issuedAt == null
@@ -2563,7 +2570,7 @@ class DashboardData {
         totalAmount: _asDouble(preorder?['total_price']),
         status: _normalizeStatus(preorder?['status']),
       );
-    }).toList()..sort((left, right) {
+    }).where((receipt) => receipt.status == 'pending').toList()..sort((left, right) {
       if (left.issuedAt == null && right.issuedAt == null) return 0;
       if (left.issuedAt == null) return 1;
       if (right.issuedAt == null) return -1;
