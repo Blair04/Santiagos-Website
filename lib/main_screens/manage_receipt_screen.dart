@@ -21,8 +21,8 @@ class _ManageReceiptState extends State<ManageReceipt> {
   List<Map<String, dynamic>> _allReceipts = [];
   late Future<List<Map<String, dynamic>>> _future;
   bool _isActionLoading = false;
-  bool _isAscending = true;
-  String _sortColumn = 'id';
+  bool _isAscending = false;
+  String _sortColumn = 'date';
 
   @override
   void initState() {
@@ -160,24 +160,63 @@ class _ManageReceiptState extends State<ManageReceipt> {
 
       final Map<dynamic, int> stockToDeduct = {};
       final Map<dynamic, int> currentStocks = {};
+      final Map<dynamic, String> variantNames = {};
 
       if (newStatus == 'Completed') {
         final items = await _supabase
             .from('PREORDER_ITEMS')
-            .select('furniture_id, quantity')
+            .select('*')
             .eq('preorder_id', preorderId);
 
         for (var item in items) {
           final dynamic furnitureId = item['furniture_id'];
           final int qty = (item['quantity'] ?? 0) as int;
-          stockToDeduct[furnitureId] = (stockToDeduct[furnitureId] ?? 0) + qty;
+          dynamic variantId = item['variant_id'];
+
+          final furnitureRow = await _supabase
+              .from('FURNITURE')
+              .select('furniture_name')
+              .eq('furniture_id', furnitureId)
+              .maybeSingle();
+          final String furnitureName =
+              (furnitureRow?['furniture_name'] ?? 'Unknown Furniture').toString();
+
+          if (variantId == null) {
+            final variants = await _supabase
+                .from('VARIANT')
+                .select('variant_id, stock')
+                .eq('furniture_id', furnitureId)
+                .order('variant_id');
+
+            if (variants.isEmpty) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text("No variant found for $furnitureName."),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+                setState(() => _isActionLoading = false);
+              }
+              return;
+            }
+
+            final match = variants.firstWhere(
+              (v) => ((v['stock'] ?? 0) as int) >= qty,
+              orElse: () => variants.first,
+            );
+            variantId = match['variant_id'];
+          }
+
+          stockToDeduct[variantId] = (stockToDeduct[variantId] ?? 0) + qty;
+          variantNames[variantId] = furnitureName;
         }
 
         for (final entry in stockToDeduct.entries) {
           final stockRow = await _supabase
-              .from('FURNITURE')
-              .select('furniture_name, stock')
-              .eq('furniture_id', entry.key)
+              .from('VARIANT')
+              .select('stock')
+              .eq('variant_id', entry.key)
               .single();
 
           final int currentStock = (stockRow['stock'] ?? 0) as int;
@@ -188,7 +227,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                      "Not enough stock for ${stockRow['furniture_name']}. Available: $currentStock, needed: ${entry.value}"),
+                      "Not enough stock for ${variantNames[entry.key]}. Available: $currentStock, needed: ${entry.value}"),
                   backgroundColor: Colors.orange,
                 ),
               );
@@ -225,20 +264,20 @@ class _ManageReceiptState extends State<ManageReceipt> {
         for (final entry in stockToDeduct.entries) {
           final int newStock = currentStocks[entry.key]! - entry.value;
 
-          final updatedFurniture = await _supabase
-              .from('FURNITURE')
+          final updatedVariant = await _supabase
+              .from('VARIANT')
               .update({'stock': newStock})
-              .eq('furniture_id', entry.key)
+              .eq('variant_id', entry.key)
               .select();
 
-          debugPrint("✅ FURNITURE stock update result: $updatedFurniture");
+          debugPrint("✅ VARIANT stock update result: $updatedVariant");
 
-          if (updatedFurniture.isEmpty) {
-            debugPrint("⚠️ FURNITURE stock update failed. Check RLS UPDATE policy for FURNITURE table.");
+          if (updatedVariant.isEmpty) {
+            debugPrint("⚠️ VARIANT stock update failed. Check RLS UPDATE policy for VARIANT table.");
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text("Stock update failed! Check Supabase RLS UPDATE policy for FURNITURE table."),
+                  content: Text("Stock update failed! Check Supabase RLS UPDATE policy for VARIANT table."),
                   backgroundColor: Colors.orange,
                 ),
               );
@@ -395,18 +434,19 @@ class _ManageReceiptState extends State<ManageReceipt> {
 
     filtered.sort((a, b) {
       int result;
+      final idA = int.tryParse(a['receipt_id'].toString()) ?? 0;
+      final idB = int.tryParse(b['receipt_id'].toString()) ?? 0;
       switch (_sortColumn) {
         case 'date':
           final dateA = DateTime.tryParse(a['issued_at'].toString()) ?? DateTime(1970);
           final dateB = DateTime.tryParse(b['issued_at'].toString()) ?? DateTime(1970);
           result = dateA.compareTo(dateB);
+          if (result == 0) result = idA.compareTo(idB);
           break;
         case 'name':
           result = _getCustomerName(a).compareTo(_getCustomerName(b));
           break;
         default:
-          final idA = int.tryParse(a['receipt_id'].toString()) ?? 0;
-          final idB = int.tryParse(b['receipt_id'].toString()) ?? 0;
           result = idA.compareTo(idB);
       }
       return _isAscending ? result : -result;
