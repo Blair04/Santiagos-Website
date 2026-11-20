@@ -31,7 +31,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  supabase_flutter: ^2.12.0  
+  supabase_flutter: ^2.18.3
   cupertino_icons: ^1.0.8
   easy_sidemenu: ^1.0.0
   shared_preferences: ^2.3.0
