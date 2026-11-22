@@ -445,42 +445,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
           ),
         ),
-
-        const SizedBox(height: 18),
-
-        // CREATE ACCOUNT
-        Wrap(
-          alignment: WrapAlignment.center,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            const Text(
-              "Don't have an account? ",
-              style: TextStyle(
-                fontSize: 12,
-                color: _labelBrown,
-              ),
-            ),
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const RegisterScreen(),
-                  ),
-                );
-              },
-              child: const Text(
-                'Create account',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: _darkBrown,
-                  fontWeight: FontWeight.bold,
-                  decoration: TextDecoration.underline,
-                ),
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -527,13 +491,9 @@ class _LoginCircleClipper extends CustomClipper<Path> {
   Path getClip(Size size) {
     final path = Path();
 
-    // Start the cream panel along the upper edge, as in the reference.
     path.moveTo(0, 0);
     path.lineTo(size.width * 0.15, 0);
 
-    // A broad, restrained circular arc. These control points keep the
-    // right edge near 61-62% of the screen width, so it does not overlap
-    // the email/password fields as it did in the previous output.
     path.cubicTo(
       size.width * 0.63,
       size.height * 0.015,

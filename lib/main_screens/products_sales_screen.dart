@@ -24,15 +24,44 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
   static const _sand = Color(0xFFE3D5CA);
   static const _darkBrown = Color(0xFF6D4C41);
 
-  late Future<_SalesReport> _future;
+  bool _isLoading = true;
+  _SalesReport? _report;
+  Object? _error;
 
   @override
   void initState() {
     super.initState();
-    _future = _fetchSales();
+    _load();
   }
 
-  void _refresh() => setState(() => _future = _fetchSales());
+  /// Used for the first load AND every refresh, so both look identical:
+  /// the whole page is replaced by a centered spinner (at least 0.6s).
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    _SalesReport? report;
+    Object? error;
+    try {
+      final results = await Future.wait<Object?>([
+        _fetchSales(),
+        Future<void>.delayed(const Duration(milliseconds: 600)),
+      ]);
+      report = results[0] as _SalesReport;
+    } catch (e) {
+      error = e;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _report = report;
+      _error = error;
+      _isLoading = false;
+    });
+  }
 
   Future<_SalesReport> _fetchSales() async {
     final db = Supabase.instance.client;
@@ -136,162 +165,161 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFFBF8F5),
-      body: FutureBuilder<_SalesReport>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: _brown));
-          }
+      body: _buildBody(),
+    );
+  }
 
-          if (snapshot.hasError) {
-            return _message(
-              icon: Icons.error_outline_rounded,
-              title: "Couldn't load sales",
-              body: "${snapshot.error}",
-              isError: true,
-            );
-          }
+  Widget _buildBody() {
+    // Same spinner for the first load and every refresh.
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: _brown));
+    }
 
-          final report = snapshot.data!;
-          if (report.rows.isEmpty) {
-            return _message(
-              icon: Icons.receipt_long_rounded,
-              title: "No Sales Records Yet",
-              body:
-                  "Completed preorder transactions, total volumes, and generated revenue streams will appear here once orders are processed.",
-            );
-          }
+    if (_error != null) {
+      return _message(
+        icon: Icons.error_outline_rounded,
+        title: "Couldn't load sales",
+        body: "$_error",
+        isError: true,
+      );
+    }
 
-          return RefreshIndicator(
-            color: _brown,
-            onRefresh: () async => _refresh(),
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(36),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+    final report = _report;
+    if (report == null || report.rows.isEmpty) {
+      return _message(
+        icon: Icons.receipt_long_rounded,
+        title: "No Sales Records Yet",
+        body:
+            "Completed preorder transactions, total volumes, and generated revenue streams will appear here once orders are processed.",
+      );
+    }
+
+    return RefreshIndicator(
+      color: _brown,
+      onRefresh: _load,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(36),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Expanded(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("Sales",
-                                style: TextStyle(
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.bold,
-                                    color: _darkBrown)),
-                            SizedBox(height: 4),
-                            Text(
-                              "Track your completed preorder transaction volumes and total revenue streams.",
-                              style: TextStyle(fontSize: 14, color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      ),
-                      
-                      Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black12,
-                              blurRadius: 4,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: IconButton(
-                          onPressed: _refresh,
-                          tooltip: 'Refresh',
-                          icon: const Icon(Icons.refresh, color: Colors.brown),
-                        ),
+                      Text("Sales",
+                          style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: _darkBrown)),
+                      SizedBox(height: 4),
+                      Text(
+                        "Track your completed preorder transaction volumes and total revenue streams.",
+                        style: TextStyle(fontSize: 14, color: Colors.grey),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
-
-                  // Summary cards
-                  LayoutBuilder(builder: (context, c) {
-                    final cards = [
-                      _statCard("Total Gross Income (Completed)",
-                          _peso(report.totalIncome), Icons.payments_rounded,
-                          highlight: true),
-                      _statCard("Units Sold", "${report.totalUnits}",
-                          Icons.inventory_2_rounded),
-                      _statCard("Completed Orders", "${report.completedOrders}",
-                          Icons.check_circle_rounded),
-                    ];
-                    if (c.maxWidth < 700) {
-                      return Column(
-                        children: cards
-                            .map((w) => Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: w))
-                            .toList(),
-                      );
-                    }
-                    return Row(
-                      children: [
-                        Expanded(flex: 2, child: cards[0]),
-                        const SizedBox(width: 16),
-                        Expanded(child: cards[1]),
-                        const SizedBox(width: 16),
-                        Expanded(child: cards[2]),
-                      ],
-                    );
-                  }),
-                  const SizedBox(height: 32),
-
-                  // Table
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.02),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Table(
-                        columnWidths: const {
-                          0: FlexColumnWidth(3),
-                          1: FlexColumnWidth(1.3),
-                          2: FlexColumnWidth(2),
-                          3: FlexColumnWidth(1.2),
-                        },
-                        children: [
-                          _headerRow(["Furniture Name", "Quantity Sold",
-                              "Total Income", "Share"]),
-                          ...report.rows.map((r) {
-                            final income = r['income'] as double;
-                            final share = report.totalIncome == 0
-                                ? 0.0
-                                : income / report.totalIncome * 100;
-                            return _dataRow([
-                              r['furniture_name'].toString(),
-                              "${r['quantity']} units",
-                              _peso(income),
-                              "${share.toStringAsFixed(1)}%",
-                            ]);
-                          }),
-                        ],
+                ),
+                Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
                       ),
-                    ),
+                    ],
+                  ),
+                  child: IconButton(
+                    onPressed: _load,
+                    tooltip: 'Refresh',
+                    icon: const Icon(Icons.refresh, color: Colors.brown),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // Summary cards
+            LayoutBuilder(builder: (context, c) {
+              final cards = [
+                _statCard("Total Gross Income (Completed)",
+                    _peso(report.totalIncome), Icons.payments_rounded,
+                    highlight: true),
+                _statCard("Units Sold", "${report.totalUnits}",
+                    Icons.inventory_2_rounded),
+                _statCard("Completed Orders", "${report.completedOrders}",
+                    Icons.check_circle_rounded),
+              ];
+              if (c.maxWidth < 700) {
+                return Column(
+                  children: cards
+                      .map((w) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: w))
+                      .toList(),
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(flex: 2, child: cards[0]),
+                  const SizedBox(width: 16),
+                  Expanded(child: cards[1]),
+                  const SizedBox(width: 16),
+                  Expanded(child: cards[2]),
+                ],
+              );
+            }),
+            const SizedBox(height: 32),
+
+            // Table
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
                   ),
                 ],
               ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Table(
+                  columnWidths: const {
+                    0: FlexColumnWidth(3),
+                    1: FlexColumnWidth(1.3),
+                    2: FlexColumnWidth(2),
+                    3: FlexColumnWidth(1.2),
+                  },
+                  children: [
+                    _headerRow(["Furniture Name", "Quantity Sold",
+                        "Total Income", "Share"]),
+                    ...report.rows.map((r) {
+                      final income = r['income'] as double;
+                      final share = report.totalIncome == 0
+                          ? 0.0
+                          : income / report.totalIncome * 100;
+                      return _dataRow([
+                        r['furniture_name'].toString(),
+                        "${r['quantity']} units",
+                        _peso(income),
+                        "${share.toStringAsFixed(1)}%",
+                      ]);
+                    }),
+                  ],
+                ),
+              ),
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }
@@ -385,7 +413,7 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
                 textAlign: TextAlign.center),
             const SizedBox(height: 32),
             TextButton.icon(
-              onPressed: _refresh,
+              onPressed: _load,
               icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
               label: const Text("Check for Updates",
                   style: TextStyle(

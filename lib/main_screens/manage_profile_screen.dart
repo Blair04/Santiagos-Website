@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,7 +11,14 @@ import 'email_change_otp_screen.dart';
 
 /// Lets the signed-in manager update the business logo and login credentials
 /// through Supabase Auth. Email changes are mirrored into `managers` only
-/// after Supabase confirms both email-change OTPs.
+/// after Supabase confirms both email-change OTPs. Password changes require
+/// the current password plus a reauthentication code emailed by Supabase.
+///
+/// After a successful password change, the new password is also saved in the
+/// `managers` table (`password` column).
+///
+/// Required SQL (run once in the Supabase SQL editor):
+///   alter table managers add column if not exists password text;
 class ManageProfileScreen extends StatefulWidget {
   final VoidCallback? onProfileUpdated;
 
@@ -28,6 +37,10 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   static const Color _mutedRed = Color(0xFFD9534F);
   static const String _localAvatarKey = 'santiagoBusinessLogoBase64';
 
+  // Change this if your managers table links to auth.users with another column
+  // (for example 'user_id').
+  static const String _managersKeyColumn = 'id';
+
   final SupabaseClient _supabase = Supabase.instance.client;
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _passwordController = TextEditingController();
@@ -36,6 +49,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
 
   Uint8List? _avatarBytes;
   String? _remoteAvatarUrl;
+  bool _isInitialLoading = true; // shows the spinner until the page is ready
   bool _isUploadingAvatar = false;
   bool _isUpdatingEmail = false;
   bool _isUpdatingPassword = false;
@@ -73,7 +87,18 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
     _confirmPasswordController.addListener(_refreshPasswordFeedback);
     _remoteAvatarUrl =
         _currentUser?.userMetadata?['business_logo_url']?.toString().trim();
-    _loadLocalAvatar();
+    _initializeScreen();
+  }
+
+  /// Loads everything the page needs before it is shown, so the manager sees
+  /// a loading spinner first (like the Sales page) instead of a half-built page.
+  Future<void> _initializeScreen() async {
+    try {
+      await _loadLocalAvatar();
+    } catch (_) {
+      // Fall through: the page still opens with the default logo.
+    }
+    if (mounted) setState(() => _isInitialLoading = false);
   }
 
   void _refreshPasswordFeedback() {
@@ -85,9 +110,43 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
     final encoded = preferences.getString(_localAvatarKey);
     if (encoded == null || encoded.isEmpty || !mounted) return;
     try {
-      setState(() => _avatarBytes = base64Decode(encoded));
+      _avatarBytes = base64Decode(encoded);
     } catch (_) {
       await preferences.remove(_localAvatarKey);
+    }
+  }
+
+  /// Mirrors the new password into `managers`, but only after Supabase Auth
+  /// proves it now holds that password (a fresh sign-in with it succeeds).
+  /// Same principle as the email change: Auth confirms first, then `managers`
+  /// follows. Returns null on success or an error message.
+  Future<String?> _syncPasswordToManagers({
+    required String userId,
+    required String email,
+    required String password,
+  }) async {
+    try {
+      final confirm = await _supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      if (confirm.user == null || confirm.user!.id != userId) {
+        return 'Supabase could not confirm the new password.';
+      }
+
+      final updated = await _supabase
+          .from('managers')
+          .update({'password': password})
+          .eq(_managersKeyColumn, userId)
+          .select();
+      if (updated.isEmpty) {
+        return 'No matching manager record was found to update.';
+      }
+      return null;
+    } on AuthException catch (error) {
+      return error.message;
+    } catch (_) {
+      return 'Could not update the manager record.';
     }
   }
 
@@ -282,6 +341,14 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
     }
   }
 
+  /// Password change flow:
+  /// 1. Validate the new password locally.
+  /// 2. Ask for the current password and verify it with Supabase Auth.
+  /// 3. Supabase emails a reauthentication code (`reauthenticate()`).
+  /// 4. The manager enters the code; Supabase validates it as the `nonce`
+  ///    while updating the password. A wrong/expired code is rejected by
+  ///    Supabase and the password stays unchanged.
+  /// 5. Once Auth confirms the new password, it is mirrored into `managers`.
   Future<void> _updatePassword() async {
     final password = _passwordController.text;
     final confirmation = _confirmPasswordController.text;
@@ -298,27 +365,105 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
       _showMessage('The password confirmation does not match.', _mutedRed);
       return;
     }
-    if (user == null) {
+    if (user == null || user.email == null) {
       _showMessage('Auth session missing. Please log in again.', _mutedRed);
+      return;
+    }
+
+    final email = user.email!;
+
+    // Step 1: ask for the current password.
+    final currentPassword = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _CurrentPasswordDialog(email: email),
+    );
+    if (currentPassword == null) return; // cancelled
+    if (currentPassword.isEmpty) {
+      _showMessage('Enter your current password to continue.', _mutedRed);
+      return;
+    }
+    if (currentPassword == password) {
+      _showMessage(
+        'Your new password must be different from the current one.',
+        _bronze,
+      );
       return;
     }
 
     setState(() => _isUpdatingPassword = true);
     try {
-      // The login password lives in Supabase Auth.
-      await _supabase.auth.updateUser(UserAttributes(password: password));
+      // Step 2: verify the current password with Supabase Auth.
+      final authResponse = await _supabase.auth.signInWithPassword(
+        email: email,
+        password: currentPassword,
+      );
+      if (authResponse.user == null || authResponse.user!.id != user.id) {
+        throw Exception('Unable to verify your account. Please sign in again.');
+      }
 
-      // Passwords must remain exclusively in Supabase Auth; never store them
-      // as readable values in the managers table.
+      // Step 3: Supabase emails a verification code to the current address.
+      await _supabase.auth.reauthenticate();
+      if (!mounted) return;
+
+      // Step 4: the manager enters the code; Supabase verifies it while the
+      // password is updated.
+      final verified = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _PasswordOtpDialog(
+          email: email,
+          onConfirm: (code) async {
+            try {
+              await _supabase.auth.updateUser(
+                UserAttributes(password: password, nonce: code),
+              );
+              return null; // success
+            } on AuthException catch (error) {
+              return error.message;
+            } catch (_) {
+              return 'Could not verify the code. Please try again.';
+            }
+          },
+          onResend: () async {
+            try {
+              await _supabase.auth.reauthenticate();
+              return null;
+            } on AuthException catch (error) {
+              return error.message;
+            } catch (_) {
+              return 'Could not resend the code. Please try again.';
+            }
+          },
+        ),
+      );
+
+      if (verified != true) return; // cancelled
+
+      // Step 5: Auth has accepted the new password; now mirror it to managers.
+      final syncError = await _syncPasswordToManagers(
+        userId: user.id,
+        email: email,
+        password: password,
+      );
 
       _passwordController.clear();
       _confirmPasswordController.clear();
       if (!mounted) return;
-      _showMessage('Password updated successfully.', _sage);
+      if (syncError == null) {
+        _showMessage('Password updated successfully.', _sage);
+      } else {
+        _showMessage(
+          'Password updated in Supabase Auth, but the manager record was not synced: $syncError',
+          _bronze,
+        );
+      }
     } on AuthException catch (error) {
-      _showMessage(error.message, _mutedRed);
+      if (mounted) _showMessage(error.message, _mutedRed);
     } catch (_) {
-      _showMessage('The password could not be updated.', _mutedRed);
+      if (mounted) {
+        _showMessage('The password could not be updated.', _mutedRed);
+      }
     } finally {
       if (mounted) setState(() => _isUpdatingPassword = false);
     }
@@ -341,6 +486,16 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Same start-up behavior as the Sales page: a centered spinner first.
+    if (_isInitialLoading) {
+      return const Scaffold(
+        backgroundColor: _background,
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF4A3E3D)),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: _background,
       body: LayoutBuilder(
@@ -589,8 +744,11 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
           TextField(
             controller: _confirmPasswordController,
             obscureText: !_showPasswords,
-            onSubmitted: (_) =>
-                _isUpdatingPassword ? null : _updatePassword(),
+            onSubmitted: (_) => _isUpdatingPassword ||
+                    !_isStrongPassword ||
+                    !_passwordsMatch
+                ? null
+                : _updatePassword(),
             decoration: _passwordDecoration('Repeat the new password'),
           ),
           if (_confirmPasswordController.text.isNotEmpty) ...[
@@ -616,6 +774,15 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
               ],
             ),
           ],
+          const SizedBox(height: 12),
+          Text(
+            'For your security, we will ask for your current password and send a verification code to your email.',
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
           const SizedBox(height: 20),
           Align(
             alignment: Alignment.centerRight,
@@ -629,7 +796,9 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
               icon: _isUpdatingPassword
                   ? _buttonProgress()
                   : const Icon(Icons.lock_reset_rounded, size: 18),
-              label: const Text('Update password'),
+              label: Text(
+                _isUpdatingPassword ? 'Please wait...' : 'Update password',
+              ),
             ),
           ),
         ],
@@ -867,5 +1036,410 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dialog 1: asks for the current password before a password change starts.
+// Owns its own controller so it is disposed safely with the dialog.
+// ---------------------------------------------------------------------------
+class _CurrentPasswordDialog extends StatefulWidget {
+  final String email;
+
+  const _CurrentPasswordDialog({required this.email});
+
+  @override
+  State<_CurrentPasswordDialog> createState() => _CurrentPasswordDialogState();
+}
+
+class _CurrentPasswordDialogState extends State<_CurrentPasswordDialog> {
+  static const Color _background = Color(0xFFF9F6F0);
+  static const Color _ink = Color(0xFF2C2221);
+  static const Color _darkBrown = Color(0xFF6D4C41);
+
+  final TextEditingController _controller = TextEditingController();
+  bool _obscure = true;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.pop(context, _controller.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: _background,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      title: const Text(
+        'Confirm Your Identity',
+        style: TextStyle(color: _ink, fontWeight: FontWeight.bold),
+      ),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Signed in as ${widget.email}',
+              style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Current password',
+              style: TextStyle(
+                color: _ink,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 7),
+            TextField(
+              controller: _controller,
+              obscureText: _obscure,
+              autofocus: true,
+              onSubmitted: (_) => _submit(),
+              decoration: InputDecoration(
+                hintText: 'Enter your current password',
+                prefixIcon: const Icon(
+                  Icons.lock_outline_rounded,
+                  color: _darkBrown,
+                  size: 20,
+                ),
+                suffixIcon: IconButton(
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                  icon: Icon(
+                    _obscure
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                  ),
+                ),
+                filled: true,
+                fillColor: const Color(0xFFFCFAF8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: _ink.withValues(alpha: 0.08)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: _ink.withValues(alpha: 0.08)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _darkBrown, width: 1.5),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'After this, we will send a verification code to your email.',
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: _darkBrown,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: _submit,
+          child: const Text('Continue'),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dialog 2: verification code sent by Supabase (reauthentication nonce).
+// `onConfirm` must return null on success or an error message to display.
+// `onResend` must return null on success or an error message to display.
+// Pops `true` once the password was updated successfully.
+// ---------------------------------------------------------------------------
+class _PasswordOtpDialog extends StatefulWidget {
+  final String email;
+  final Future<String?> Function(String code) onConfirm;
+  final Future<String?> Function() onResend;
+
+  const _PasswordOtpDialog({
+    required this.email,
+    required this.onConfirm,
+    required this.onResend,
+  });
+
+  @override
+  State<_PasswordOtpDialog> createState() => _PasswordOtpDialogState();
+}
+
+class _PasswordOtpDialogState extends State<_PasswordOtpDialog> {
+  static const Color _background = Color(0xFFF9F6F0);
+  static const Color _ink = Color(0xFF2C2221);
+  static const Color _darkBrown = Color(0xFF6D4C41);
+  static const Color _sage = Color(0xFF438A5E);
+  static const Color _mutedRed = Color(0xFFD9534F);
+  static const int _resendCooldownSeconds = 60;
+
+  final TextEditingController _codeController = TextEditingController();
+  Timer? _timer;
+  int _secondsLeft = _resendCooldownSeconds;
+  bool _isVerifying = false;
+  bool _isResending = false;
+  String? _error;
+  String? _info;
+
+  @override
+  void initState() {
+    super.initState();
+    _startCooldown();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  void _startCooldown() {
+    _timer?.cancel();
+    setState(() => _secondsLeft = _resendCooldownSeconds);
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_secondsLeft <= 1) {
+        timer.cancel();
+        setState(() => _secondsLeft = 0);
+      } else {
+        setState(() => _secondsLeft--);
+      }
+    });
+  }
+
+  Future<void> _confirm() async {
+    if (_isVerifying) return;
+    final code = _codeController.text.trim();
+    if (code.length < 6) {
+      setState(() {
+        _error = 'Enter the verification code from your email.';
+        _info = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isVerifying = true;
+      _error = null;
+      _info = null;
+    });
+
+    final error = await widget.onConfirm(code);
+    if (!mounted) return;
+
+    if (error == null) {
+      Navigator.pop(context, true);
+    } else {
+      setState(() {
+        _isVerifying = false;
+        _error = error;
+      });
+    }
+  }
+
+  Future<void> _resend() async {
+    if (_isResending || _isVerifying || _secondsLeft > 0) return;
+    setState(() {
+      _isResending = true;
+      _error = null;
+      _info = null;
+    });
+
+    final error = await widget.onResend();
+    if (!mounted) return;
+
+    setState(() => _isResending = false);
+    if (error == null) {
+      _codeController.clear();
+      _startCooldown();
+      setState(() => _info = 'A new verification code was sent.');
+    } else {
+      setState(() => _error = error);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canResend = _secondsLeft == 0 && !_isResending && !_isVerifying;
+
+    return AlertDialog(
+      backgroundColor: _background,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      title: const Text(
+        'Verify Password Change',
+        style: TextStyle(color: _ink, fontWeight: FontWeight.bold),
+      ),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'We sent a verification code to ${widget.email}. '
+              'Enter it below to confirm your new password.',
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Verification code',
+              style: TextStyle(
+                color: _ink,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 7),
+            TextField(
+              controller: _codeController,
+              enabled: !_isVerifying,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(10),
+              ],
+              style: const TextStyle(
+                color: _ink,
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 6,
+              ),
+              onSubmitted: (_) => _confirm(),
+              decoration: InputDecoration(
+                hintText: '------',
+                hintStyle: TextStyle(
+                  color: Colors.grey.shade400,
+                  letterSpacing: 6,
+                ),
+                filled: true,
+                fillColor: const Color(0xFFFCFAF8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: _ink.withValues(alpha: 0.08)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: _ink.withValues(alpha: 0.08)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _darkBrown, width: 1.5),
+                ),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.error_outline, size: 15, color: _mutedRed),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(
+                        color: _mutedRed,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (_info != null) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(Icons.check_circle, size: 15, color: _sage),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _info!,
+                      style: const TextStyle(
+                        color: _sage,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: canResend ? _resend : null,
+                style: TextButton.styleFrom(
+                  foregroundColor: _darkBrown,
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 36),
+                ),
+                child: Text(
+                  _isResending
+                      ? 'Sending...'
+                      : _secondsLeft > 0
+                      ? 'Resend code in ${_secondsLeft}s'
+                      : 'Resend code',
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isVerifying ? null : () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: _darkBrown,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: _isVerifying ? null : _confirm,
+          child: _isVerifying
+              ? const SizedBox(
+                  width: 17,
+                  height: 17,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text('Verify & update'),
+        ),
+      ],
+    );
   }
 }

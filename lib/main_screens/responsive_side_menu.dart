@@ -23,6 +23,7 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
   int _selectedIndex = 0;
   int? _highlightFurnitureId;
   int _highlightStock = 0;
+  String? _highlightReceiptId; // NEW: receipt to open in Manage Receipt
   bool _isDrawerOpen = false;
   Uint8List? _profileAvatarBytes;
 
@@ -153,6 +154,16 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
     }
   }
 
+  /// Called by the sidebar / drawer. Clears any one-time "open this item"
+  /// requests so they don't re-trigger when the user comes back to a tab.
+  void _onNavItemSelected(int index) {
+    setState(() {
+      _selectedIndex = index;
+      if (index != 2) _highlightFurnitureId = null;
+      if (index != 1) _highlightReceiptId = null; // NEW
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final List<Widget> screens = [
@@ -161,7 +172,12 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
           if (mounted) setState(() => _selectedIndex = 2);
         },
         onViewReceipts: () {
-          if (mounted) setState(() => _selectedIndex = 1);
+          if (mounted) {
+            setState(() {
+              _selectedIndex = 1;
+              _highlightReceiptId = null; // "View all" = no specific receipt
+            });
+          }
         },
         onViewSales: () {
           if (mounted) setState(() => _selectedIndex = 4);
@@ -173,8 +189,20 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
             _highlightStock = stock;
           });
         },
+        // NEW: clicking a row in Recent Transactions opens that receipt
+        onReceiptSelected: (receiptId) {
+          if (!mounted) return;
+          setState(() {
+            _selectedIndex = 1;
+            _highlightReceiptId = receiptId;
+          });
+        },
       ),
-      ManageReceipt(),
+      // NEW: pass the chosen receipt id; key forces a fresh open per receipt
+      ManageReceipt(
+        key: ValueKey('manage-receipt-${_highlightReceiptId ?? 'none'}'),
+        initialReceiptId: _highlightReceiptId,
+      ),
       ManageFurniture(
         highlightFurnitureId: _highlightFurnitureId,
         highlightStock: _highlightStock,
@@ -237,10 +265,7 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
                     child: NavigationContent(
                       selectedIndex: _selectedIndex,
                       onItemSelected: (index) {
-                        setState(() {
-                          _selectedIndex = index;
-                          if (index != 2) _highlightFurnitureId = null;
-                        });
+                        _onNavItemSelected(index);
                         Navigator.pop(context);
                       },
 
@@ -264,12 +289,7 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
                       width: 250,
                       child: NavigationContent(
                         selectedIndex: _selectedIndex,
-                        onItemSelected: (index) {
-                          setState(() {
-                            _selectedIndex = index;
-                            if (index != 2) _highlightFurnitureId = null;
-                          });
-                        },
+                        onItemSelected: _onNavItemSelected,
 
                         onLogout: _confirmLogout,
                         profileAvatarBytes: _profileAvatarBytes,

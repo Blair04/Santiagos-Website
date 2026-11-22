@@ -299,6 +299,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Same loading style as Manage Products: the whole page is replaced by a
+    // centered brown spinner while data loads or the refresh button is used.
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: _background,
+        body: Center(child: CircularProgressIndicator(color: Colors.brown)),
+      );
+    }
+
     return Scaffold(
       backgroundColor: _background,
       body: LayoutBuilder(
@@ -314,7 +323,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           return RefreshIndicator(
             color: _bronze,
-            onRefresh: _fetchDashboardData,
+            onRefresh: () => _fetchDashboardData(showLoading: false),
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.fromLTRB(
@@ -431,16 +440,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            icon: _isLoading
-                ? const SizedBox(
-                    width: 17,
-                    height: 17,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.refresh_rounded, size: 20),
+            icon: const Icon(Icons.refresh_rounded, size: 20),
           ),
         ),
       ],
@@ -1364,7 +1364,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
 
-    Widget furnitureRows(
+        Widget furnitureRows(
       List<FurnitureStockAlert> items, {
       required String emptyMessage,
       required Color valueColor,
@@ -1384,46 +1384,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return Column(
         children: [
           for (var index = 0; index < items.length; index++) ...[
-            InkWell(//new
-              borderRadius: BorderRadius.circular(8),//new
-              onTap: items[index].furnitureId == null || widget.onProductSelected == null 
-              ? null 
-              : () => widget. onProductSelected!(
-                items[index].furnitureId!, 
-                items[index].stockLeft, //new
-                ),
-            
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    items[index].furnitureName,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _ink,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+            _HoverableStockRow(
+              name: items[index].furnitureName,
+              valueText: valueLabel(items[index].stockLeft),
+              color: valueColor,
+              onTap:
+                  items[index].furnitureId == null ||
+                      widget.onProductSelected == null
+                  ? null
+                  : () => widget.onProductSelected!(
+                      items[index].furnitureId!,
+                      items[index].stockLeft,
                     ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  valueLabel(items[index].stockLeft),
-                  textAlign: TextAlign.end,
-                  style: TextStyle(
-                    color: valueColor,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
             ),
-          ),
             if (index != items.length - 1)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Divider(
                   height: 1,
                   color: valueColor.withValues(alpha: 0.14),
@@ -2254,11 +2230,11 @@ class DashboardData {
       topPreorders: const [],
       stockAlerts: const [],
       productStock: const [],
-      weeklyRevenue: List.generate(7, (index) => DailyRevenueMetric(date: today.subtract(Duration(days: 6 - index)), amount: 0)),
+      weeklyRevenue: List.generate(7, (index) => DailyRevenueMetric(date: _daysAgo(today, 6 - index), amount: 0)),
       weeklyActivity: List.generate(
         7,
         (index) => DailyPreorderActivity(
-          date: today.subtract(Duration(days: 6 - index)),
+          date: _daysAgo(today, 6 - index),
           count: 0,
         ),
       ),
@@ -2466,7 +2442,7 @@ class DashboardData {
     final today = _dateOnly(DateTime.now());
     final weekDates = List.generate(
       7,
-      (index) => today.subtract(Duration(days: 6 - index)),
+      (index) => _daysAgo(today, 6 - index),
     );
 
     for (final item in preorderItemRows) {
@@ -2527,8 +2503,23 @@ class DashboardData {
       ],
     );
 
-    // The activity chart counts completed receipts only and attaches the
-    // matching completed preorder amount to the receipt's issue date.
+    // Sales Activity: ONLY completed pre-orders, ONLY the last 7 days.
+    // Source is the PREORDER table (status + total_price + preordered_at).
+    // A completed order is dated by the later of its preorder date and its
+    // receipt's issued date, so an order placed earlier but completed this
+    // week still lands inside the 7-day window.
+    final receiptIssuedByPreorder = <String, DateTime>{};
+    for (final receipt in receiptRows) {
+      final issued =
+          DateTime.tryParse(receipt['issued_at']?.toString() ?? '')?.toLocal();
+      if (issued == null) continue;
+      final key = '${receipt['preorder_id']}';
+      final existing = receiptIssuedByPreorder[key];
+      if (existing == null || issued.isAfter(existing)) {
+        receiptIssuedByPreorder[key] = issued;
+      }
+    }
+
     final weeklyCounts = <DateTime, int>{
       for (final date in weekDates) date: 0,
     };
@@ -2536,19 +2527,30 @@ class DashboardData {
       for (final date in weekDates) date: 0.0,
     };
 
-    for (final receipt in receiptRows) {
-      final preorder = _relationMap(receipt['PREORDER'] ?? receipt['preorder']);
-      if (!_isCompletedStatus(_normalizeStatus(preorder?['status']))) continue;
-      final issuedAt = DateTime.tryParse(receipt['issued_at']?.toString() ?? '')?.toLocal();
-      if (issuedAt == null) continue;
-      final date = _dateOnly(issuedAt);
-      if (!weeklyCounts.containsKey(date)) continue;
+    for (final preorder in preorderRows) {
+      if (!_isCompletedStatus(_normalizeStatus(preorder['status']))) continue;
+
+      final preorderedAt =
+          DateTime.tryParse(preorder['preordered_at']?.toString() ?? '')
+              ?.toLocal();
+      final issuedAt = receiptIssuedByPreorder['${preorder['preorder_id']}'];
+
+      DateTime? saleDate = preorderedAt;
+      if (issuedAt != null && (saleDate == null || issuedAt.isAfter(saleDate))) {
+        saleDate = issuedAt;
+      }
+      if (saleDate == null) continue;
+
+      final date = _dateOnly(saleDate);
+      if (!weeklyCounts.containsKey(date)) continue; // outside last 7 days
+
       weeklyCounts[date] = (weeklyCounts[date] ?? 0) + 1;
-      revenueByDate[date] = (revenueByDate[date] ?? 0) + _asDouble(preorder?['total_price']);
+      revenueByDate[date] =
+          (revenueByDate[date] ?? 0) + _asDouble(preorder['total_price']);
     }
 
     final weeklyRevenue = List.generate(7, (index) {
-      final date = today.subtract(Duration(days: 6 - index));
+      final date = _daysAgo(today, 6 - index);
       return DailyRevenueMetric(date: date, amount: revenueByDate[date] ?? 0);
     });
 
@@ -3002,7 +3004,11 @@ String _normalizeStatus(dynamic value) {
 }
 
 bool _isCompletedStatus(String status) {
-  return status == 'completed';
+  return status == 'completed' ||
+      status == 'complete' ||
+      status == 'done' ||
+      status == 'paid' ||
+      status == 'fulfilled';
 }
 
 bool _isCancelledStatus(String status) {
@@ -3024,4 +3030,124 @@ double _asDouble(dynamic value) {
 
 DateTime _dateOnly(DateTime date) {
   return DateTime(date.year, date.month, date.day);
+}
+
+/// Calendar-safe "n days before [date]" (avoids DST hour drift that
+/// Duration-based subtraction can cause, which would break date matching).
+DateTime _daysAgo(DateTime date, int days) {
+  return DateTime(date.year, date.month, date.day - days);
+}
+
+/// A stock row that visibly reacts to hover and press so it reads as clickable.
+class _HoverableStockRow extends StatefulWidget {
+  final String name;
+  final String valueText;
+  final Color color;
+  final VoidCallback? onTap;
+
+  const _HoverableStockRow({
+    required this.name,
+    required this.valueText,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  State<_HoverableStockRow> createState() => _HoverableStockRowState();
+}
+
+class _HoverableStockRowState extends State<_HoverableStockRow> {
+  static const Color _ink = Color(0xFF2C2221);
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool clickable = widget.onTap != null;
+    final bool active = clickable && _isHovered;
+
+    return MouseRegion(
+      cursor: clickable ? SystemMouseCursors.click : MouseCursor.defer,
+      onEnter: (_) {
+        if (clickable) setState(() => _isHovered = true);
+      },
+      onExit: (_) {
+        if (clickable) setState(() => _isHovered = false);
+      },
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: widget.onTap,
+          hoverColor: Colors.transparent, // we draw our own hover below
+          splashColor: widget.color.withValues(alpha: 0.12),
+          highlightColor: widget.color.withValues(alpha: 0.08),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+            decoration: BoxDecoration(
+              color: active
+                  ? widget.color.withValues(alpha: 0.12)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: AnimatedSlide(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                    offset: active ? const Offset(0.02, 0) : Offset.zero,
+                    child: AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 180),
+                      style: TextStyle(
+                        color: _ink,
+                        fontSize: 12,
+                        fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                      ),
+                      child: Text(
+                        widget.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  widget.valueText,
+                  textAlign: TextAlign.end,
+                  style: TextStyle(
+                    color: widget.color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (clickable)
+                  AnimatedSlide(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                    offset: active ? Offset.zero : const Offset(-0.5, 0),
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 180),
+                      opacity: active ? 1 : 0,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: Icon(
+                          Icons.chevron_right_rounded,
+                          size: 16,
+                          color: widget.color,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
