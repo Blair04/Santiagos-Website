@@ -382,19 +382,27 @@ class _AddFurnitureState extends State<AddFurniture> {
                   children: [
                     Expanded(
                       child: TextFormField(
-                        controller: _priceController,
-                        style: _fieldStyle,
-                        keyboardType: TextInputType.number,
-                        decoration: _inputDeco('Price').copyWith(prefixText: '₱ ', prefixStyle: _fieldStyle),
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return 'Required';
-                          final price = double.tryParse(v);
-                          if (price == null) return 'Invalid';
-                          if (price < 0) return 'Cannot be negative';
-                          return null;
-                        },
-                      ),
-                    ),
+                      controller: _priceController,
+                      style: _fieldStyle,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+      
+                      TextInputFormatter.withFunction((oldValue, newValue) {
+                      if (newValue.text.isEmpty) return newValue;
+                      final isValid = RegExp(r'^\d*\.?\d{0,2}$').hasMatch(newValue.text);
+                      return isValid ? newValue : oldValue;
+                    }),
+    ],
+    decoration: _inputDeco('Price').copyWith(prefixText: '₱ ', prefixStyle: _fieldStyle),
+    validator: (v) {
+      if (v == null || v.trim().isEmpty) return 'Required';
+      final price = double.tryParse(v.trim());
+      if (price == null) return 'Invalid price';
+      if (price <= 0) return 'Must be greater than 0';
+      return null;
+    },
+  ),
+),
                     const SizedBox(width: 12),
                     Expanded(
                       child: DropdownButtonFormField<int>(
