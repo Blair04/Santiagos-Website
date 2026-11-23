@@ -26,6 +26,10 @@ class _ManageReceiptState extends State<ManageReceipt> {
   bool _isAscending = false;
   String _sortColumn = 'date';
 
+  // Pending order slips older than this many days are cancelled automatically.
+  static const int _autoCancelDays = 7;
+  static const String _autoCancelMessage = 'Passed 7 days';
+
   @override
   void initState() {
     super.initState();
@@ -88,6 +92,66 @@ class _ManageReceiptState extends State<ManageReceipt> {
     });
   }
 
+  /// Automatically cancels every Pending order slip that was issued more than
+  /// 7 days ago. The status is saved in PREORDER and the message
+  /// "Passed 7 days" is saved in RECEIPT. The local data is only changed
+  /// after the database confirms the update.
+  Future<void> _autoCancelExpiredReceipts(
+      List<Map<String, dynamic>> receipts) async {
+    final DateTime now = DateTime.now();
+
+    for (final receipt in receipts) {
+      final dynamic preorderRaw = receipt['PREORDER'] ?? receipt['preorder'];
+      Map<String, dynamic>? preorder;
+      if (preorderRaw is List && preorderRaw.isNotEmpty) {
+        preorder = preorderRaw.first;
+      } else if (preorderRaw is Map<String, dynamic>) {
+        preorder = preorderRaw;
+      }
+      if (preorder == null) continue;
+
+      final String status = (preorder['status'] ?? 'Pending').toString();
+      if (status.toLowerCase() != 'pending') continue;
+
+      final DateTime? issuedAt =
+          DateTime.tryParse(receipt['issued_at'].toString());
+      if (issuedAt == null) continue;
+
+      if (now.difference(issuedAt).inDays < _autoCancelDays) continue;
+
+      try {
+        final updatedPreorder = await _supabase
+            .from('PREORDER')
+            .update({'status': 'Cancelled'})
+            .eq('preorder_id', receipt['preorder_id'])
+            .select();
+
+        if (updatedPreorder.isEmpty) {
+          debugPrint(
+              "⚠️ Auto-cancel failed for preorder ${receipt['preorder_id']}. Check RLS UPDATE policy for PREORDER.");
+          continue;
+        }
+
+        preorder['status'] = 'Cancelled';
+
+        final updatedReceipt = await _supabase
+            .from('RECEIPT')
+            .update({'message': _autoCancelMessage})
+            .eq('receipt_id', receipt['receipt_id'])
+            .select();
+
+        if (updatedReceipt.isEmpty) {
+          debugPrint(
+              "⚠️ Auto-cancel message not saved for receipt ${receipt['receipt_id']}. Check RLS UPDATE policy for RECEIPT.");
+        }
+
+        receipt['message'] = _autoCancelMessage;
+      } catch (e) {
+        debugPrint("⚠️ Could not auto-cancel receipt ${receipt['receipt_id']}: $e");
+      }
+    }
+  }
+
   Future<List<Map<String, dynamic>>> _fetchReceipts() async {
     final response = await _supabase.from('RECEIPT').select('''
       receipt_id,
@@ -117,6 +181,9 @@ class _ManageReceiptState extends State<ManageReceipt> {
     ''');
 
     final receipts = List<Map<String, dynamic>>.from(response);
+
+    // Auto-cancel any pending order slip that is older than 7 days.
+    await _autoCancelExpiredReceipts(receipts);
 
     // Freeze any order item that has no saved name/price yet, so later
     // edits to the furniture never change the generated order slip.
