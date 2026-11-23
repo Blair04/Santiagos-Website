@@ -73,10 +73,11 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
         (orders as List).map((o) => o['preorder_id'] as int).toList();
     if (orderIds.isEmpty) return _SalesReport([], 0);
 
-    // 2) their items
+    // 2) their items (item_name = name saved at the time of the sale)
     final items = await db
         .from('PREORDER_ITEMS')
-        .select('furniture_id, variant_id, quantity, item_total_price')
+        .select(
+            'furniture_id, variant_id, quantity, item_total_price, item_name')
         .inFilter('preorder_id', orderIds) as List;
 
     // 3) resolve furniture_id for items that only have a variant_id
@@ -109,7 +110,7 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
         .toSet()
         .toList();
 
-    // 4) names (active + archived products)
+    // 4) names (active + archived products) - only used as a fallback
     final Map<int, String> names = {};
     if (furnitureIds.isNotEmpty) {
       final active = await db
@@ -135,11 +136,20 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
     final Map<String, Map<String, dynamic>> grouped = {};
     for (final item in items) {
       final fid = furnitureIdOf(item);
-      final key = fid?.toString() ?? 'unknown';
+
+      // ADDED: name saved on the order item at the time of sale
+      final savedName = (item['item_name'] as String?)?.trim();
+      final hasSavedName = savedName != null && savedName.isNotEmpty;
+
+      final key = hasSavedName
+          ? '${fid ?? 'x'}|$savedName' // old-name sales stay under the old name
+          : (fid?.toString() ?? 'unknown');
       final row = grouped.putIfAbsent(
         key,
         () => {
-          'furniture_name': fid != null ? (names[fid] ?? 'Unknown Item') : 'Unknown Item',
+          'furniture_name': hasSavedName
+              ? savedName
+              : (fid != null ? (names[fid] ?? 'Unknown Item') : 'Unknown Item'),
           'quantity': 0,
           'income': 0.0,
         },
@@ -309,7 +319,7 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
                           : income / report.totalIncome * 100;
                       return _dataRow([
                         r['furniture_name'].toString(),
-                        "${r['quantity']} units",
+                        "${r['quantity']} unit/s",
                         _peso(income),
                         "${share.toStringAsFixed(1)}%",
                       ]);

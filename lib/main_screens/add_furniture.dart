@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -40,6 +41,8 @@ class _AddFurnitureState extends State<AddFurniture> {
   bool _isDraggingImage = false;
   bool _isDraggingModel = false;
 
+  bool _imageError = false;
+
   bool _linkToExisting = false;
 
   List<Map<String, dynamic>> _categories = [];
@@ -48,6 +51,11 @@ class _AddFurnitureState extends State<AddFurniture> {
   int? _selectedFurnitureId;
 
   bool get _isEditing => widget.editProduct != null;
+
+  // CHANGED: true when there is an image (newly picked or already saved)
+  bool get _hasImage =>
+      _imageBytes != null ||
+      (_existingImageUrl != null && _existingImageUrl!.isNotEmpty);
 
   @override
   void initState() {
@@ -127,7 +135,11 @@ class _AddFurnitureState extends State<AddFurniture> {
     final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (pickedFile != null) {
       final bytes = await pickedFile.readAsBytes();
-      setState(() { _imageBytes = bytes; _imageName = pickedFile.name; });
+      setState(() {
+        _imageBytes = bytes;
+        _imageName = pickedFile.name;
+        _imageError = false;
+      });
     }
   }
 
@@ -138,8 +150,31 @@ class _AddFurnitureState extends State<AddFurniture> {
     }
   }
 
+  // CHANGED: remove the selected image (new or existing)
+  void _removeImage() {
+    setState(() {
+      _imageBytes = null;
+      _imageName = null;
+      _existingImageUrl = null;
+    });
+  }
+
+  // CHANGED: remove the selected 3D model (new or existing)
+  void _removeModel() {
+    setState(() {
+      _modelBytes = null;
+      _modelName = null;
+      _existingModelUrl = null;
+    });
+  }
+
   Future<void> _saveProduct() async {
-    if (!_formKey.currentState!.validate() || (!_isEditing && _imageBytes == null)) {
+    final bool formValid = _formKey.currentState!.validate();
+    // CHANGED: image is required in both add and edit mode (edit mode only fails if the user removed it)
+    final bool imageMissing = !_hasImage;
+    setState(() => _imageError = imageMissing);
+
+    if (!formValid || imageMissing) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please check your inputs and selected image.')));
       return;
     }
@@ -279,11 +314,18 @@ class _AddFurnitureState extends State<AddFurniture> {
                     bytes: _imageBytes,
                     networkUrl: _existingImageUrl,
                     onTap: _pickImage,
+                    onRemove: _removeImage, // CHANGED
                     isImage: true,
                     isHighlighted: _isDraggingImage,
+                    hasError: _imageError,
                     onDragEntered: () => setState(() => _isDraggingImage = true),
                     onDragExited: () => setState(() => _isDraggingImage = false),
-                    onFileDropped: (b, n) => setState(() { _imageBytes = b; _imageName = n; _isDraggingImage = false; })
+                    onFileDropped: (b, n) => setState(() {
+                      _imageBytes = b;
+                      _imageName = n;
+                      _isDraggingImage = false;
+                      _imageError = false;
+                    })
                   ),
                   const SizedBox(width: 12),
                   _buildFilePicker(
@@ -292,6 +334,7 @@ class _AddFurnitureState extends State<AddFurniture> {
                     bytes: _modelBytes,
                     networkUrl: _existingModelUrl,
                     onTap: _pickModel,
+                    onRemove: _removeModel, // CHANGED
                     isImage: false,
                     isHighlighted: _isDraggingModel,
                     onDragEntered: () => setState(() => _isDraggingModel = true),
@@ -388,12 +431,13 @@ class _AddFurnitureState extends State<AddFurniture> {
                       controller: _stockController,
                       style: _fieldStyle,
                       keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: _inputDeco('Stock Qty'),
                       validator: (v) {
                         if (v == null || v.isEmpty) return 'Required';
                         final stock = int.tryParse(v);
                         if (stock == null) return 'Invalid integer';
-                        if (stock < 0) return 'Cannot be negative';
+                        if (stock <= 0) return 'Must be at least 1';
                         return null;
                       },
                     ),
@@ -438,13 +482,16 @@ class _AddFurnitureState extends State<AddFurniture> {
     Uint8List? bytes,
     String? networkUrl,
     required VoidCallback onTap,
+    required VoidCallback onRemove, // CHANGED
     required bool isImage,
     required bool isHighlighted,
+    bool hasError = false,
     required VoidCallback onDragEntered,
     required VoidCallback onDragExited,
     required Function(Uint8List, String) onFileDropped
   }) {
     final hasAsset = bytes != null || (networkUrl != null && networkUrl.isNotEmpty && networkUrl.startsWith('http'));
+    final showError = hasError && !hasAsset && !isHighlighted;
 
     return Expanded(
       child: DropTarget(
@@ -465,32 +512,64 @@ class _AddFurnitureState extends State<AddFurniture> {
               color: isHighlighted ? Colors.brown.withOpacity(0.2) : Colors.brown.withOpacity(0.05),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: isHighlighted ? Colors.brown : (hasAsset ? Colors.green : Colors.brown.withOpacity(0.15)),
-                width: isHighlighted ? 2.5 : 1.0,
+                color: showError
+                    ? Colors.red
+                    : (isHighlighted ? Colors.brown : (hasAsset ? Colors.green : Colors.brown.withOpacity(0.15))),
+                width: (isHighlighted || showError) ? 2.5 : 1.0,
               )
             ),
-            child: hasAsset && !isHighlighted
-              ? (isImage
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: bytes != null
-                          ? Image.memory(bytes, fit: BoxFit.cover)
-                          : Image.network(networkUrl!, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.broken_image, color: Colors.grey))
-                    )
-                  : const Icon(Icons.check_circle, color: Colors.green))
-              : Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      isHighlighted ? Icons.file_upload : icon,
-                      color: isHighlighted ? Colors.brown : Colors.brown.withOpacity(0.6)
+            // CHANGED: wrapped in a Stack so the X button can sit on the top-right corner
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: hasAsset && !isHighlighted
+                    ? (isImage
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: bytes != null
+                                ? Image.memory(bytes, fit: BoxFit.cover)
+                                : Image.network(networkUrl!, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.broken_image, color: Colors.grey))
+                          )
+                        : const Center(child: Icon(Icons.check_circle, color: Colors.green)))
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            isHighlighted ? Icons.file_upload : icon,
+                            color: showError
+                                ? Colors.red
+                                : (isHighlighted ? Colors.brown : Colors.brown.withOpacity(0.6))
+                          ),
+                          Text(
+                            isHighlighted ? 'Drop File' : label,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
+                              color: showError ? Colors.red : null,
+                            )
+                          )
+                        ]
+                      ),
+                ),
+                // CHANGED: X (delete) button, shown only when there is a file
+                if (hasAsset && !isHighlighted)
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: GestureDetector(
+                      onTap: onRemove,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.close, size: 16, color: Colors.white),
+                      ),
                     ),
-                    Text(
-                      isHighlighted ? 'Drop File' : label,
-                      style: TextStyle(fontSize: 12, fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)
-                    )
-                  ]
-              ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

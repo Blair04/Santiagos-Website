@@ -106,6 +106,8 @@ class _ManageReceiptState extends State<ManageReceipt> {
         PREORDER_ITEMS (
           quantity,
           furniture_id,
+          item_name,
+          item_price,
           FURNITURE (
             furniture_name,
             price
@@ -115,7 +117,76 @@ class _ManageReceiptState extends State<ManageReceipt> {
     ''');
 
     final receipts = List<Map<String, dynamic>>.from(response);
+
+    // Freeze any order item that has no saved name/price yet, so later
+    // edits to the furniture never change the generated order slip.
+    // The snapshot is only trusted once the database confirms it was saved.
+    bool snapshotSaveFailed = false;
+
+    for (final receipt in receipts) {
+      final dynamic preorderRaw = receipt['PREORDER'] ?? receipt['preorder'];
+      Map<String, dynamic>? preorder;
+      if (preorderRaw is List && preorderRaw.isNotEmpty) {
+        preorder = preorderRaw.first;
+      } else if (preorderRaw is Map<String, dynamic>) {
+        preorder = preorderRaw;
+      }
+      if (preorder == null) continue;
+
+      final List itemsList =
+          preorder['PREORDER_ITEMS'] ?? preorder['preorder_items'] ?? [];
+
+      for (final item in itemsList) {
+        if (item['item_name'] != null && item['item_price'] != null) continue;
+
+        final furnitureData = item['FURNITURE'] ?? item['furniture'];
+        if (furnitureData == null) continue;
+
+        final String snapName =
+            (item['item_name'] ?? furnitureData['furniture_name'] ?? 'Unknown Furniture')
+                .toString();
+        final double snapPrice =
+            (item['item_price'] ?? furnitureData['price'] ?? 0).toDouble();
+
+        try {
+          final saved = await _supabase
+              .from('PREORDER_ITEMS')
+              .update({'item_name': snapName, 'item_price': snapPrice})
+              .eq('preorder_id', receipt['preorder_id'])
+              .eq('furniture_id', item['furniture_id'])
+              .select();
+
+          if (saved.isEmpty) {
+            // 0 rows updated -> almost always an RLS UPDATE policy problem.
+            snapshotSaveFailed = true;
+            debugPrint(
+                "⚠️ Snapshot NOT saved for preorder ${receipt['preorder_id']} / furniture ${item['furniture_id']}. Check RLS UPDATE policy for PREORDER_ITEMS.");
+          } else {
+            item['item_name'] = snapName;
+            item['item_price'] = snapPrice;
+          }
+        } catch (e) {
+          snapshotSaveFailed = true;
+          debugPrint("⚠️ Could not save order item snapshot: $e");
+        }
+      }
+    }
+
     _allReceipts = receipts;
+
+    if (snapshotSaveFailed && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                "Couldn't freeze order slip prices. Check Supabase RLS UPDATE policy for PREORDER_ITEMS."),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      });
+    }
+
     return receipts;
   }
 
@@ -544,12 +615,18 @@ class _ManageReceiptState extends State<ManageReceipt> {
         final List itemsList = p['PREORDER_ITEMS'] ?? p['preorder_items'] ?? [];
         for (var item in itemsList) {
           final furnitureData = item['FURNITURE'] ?? item['furniture'];
-          final String name = furnitureData != null
-              ? (furnitureData['furniture_name'] ?? "Unknown Furniture")
-              : "Unknown Furniture";
+
+          // Prefer the saved snapshot; fall back to live furniture data
+          // only for items that have no snapshot yet.
+          final String name = (item['item_name'] ??
+                  (furnitureData != null ? furnitureData['furniture_name'] : null) ??
+                  "Unknown Furniture")
+              .toString();
           final int qty = (item['quantity'] ?? 0) as int;
-          final double unitPrice =
-              furnitureData != null ? (furnitureData['price'] ?? 0.0).toDouble() : 0.0;
+          final double unitPrice = (item['item_price'] ??
+                  (furnitureData != null ? furnitureData['price'] : null) ??
+                  0.0)
+              .toDouble();
           final double computedLineTotal = qty * unitPrice;
           calculatedGrandTotal += computedLineTotal;
 

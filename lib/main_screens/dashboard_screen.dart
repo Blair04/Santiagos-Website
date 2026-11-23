@@ -5,7 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Products with 1..this many units are "low stock"; 0 is "out of stock".
-const int _lowStockThreshold = 2;
+const int _lowStockThreshold = 1;
 
 /// Totals used by both the preorder summary card and status donut chart.
 class PreorderSummary {
