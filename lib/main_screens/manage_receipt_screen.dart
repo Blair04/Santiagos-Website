@@ -16,6 +16,7 @@ class ManageReceipt extends StatefulWidget {
 
 class _ManageReceiptState extends State<ManageReceipt> {
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _tableScrollController = ScrollController();
 
   String query = "";
   String selectedTab = 'Pending';
@@ -26,9 +27,21 @@ class _ManageReceiptState extends State<ManageReceipt> {
   bool _isAscending = false;
   String _sortColumn = 'date';
 
-  // Pending order slips older than this many days are cancelled automatically.
   static const int _autoCancelDays = 7;
   static const String _autoCancelMessage = 'Passed 7 days';
+
+  static const double _tableMinWidth = 720;
+
+  double get _screenWidth => MediaQuery.of(context).size.width;
+  bool get _isTablet => _screenWidth >= 600;
+  bool get _isDesktop => _screenWidth >= 1024;
+
+  double get _pagePadding => _isDesktop ? 32 : (_isTablet ? 24 : 16);
+  double get _titleSize => _isDesktop ? 28 : (_isTablet ? 24 : 20);
+  double get _contentMaxWidth => _isDesktop ? 1200 : double.infinity;
+  double get _tabFontSize => _isTablet ? 16 : 13;
+  double get _dialogWidth =>
+      (_screenWidth - 64).clamp(280.0, _isDesktop ? 620.0 : 550.0).toDouble();
 
   @override
   void initState() {
@@ -56,6 +69,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
   @override
   void dispose() {
     _searchController.dispose();
+    _tableScrollController.dispose();
     super.dispose();
   }
 
@@ -92,10 +106,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
     });
   }
 
-  /// Automatically cancels every Pending order slip that was issued more than
-  /// 7 days ago. The status is saved in PREORDER and the message
-  /// "Passed 7 days" is saved in RECEIPT. The local data is only changed
-  /// after the database confirms the update.
   Future<void> _autoCancelExpiredReceipts(
       List<Map<String, dynamic>> receipts) async {
     final DateTime now = DateTime.now();
@@ -182,12 +192,8 @@ class _ManageReceiptState extends State<ManageReceipt> {
 
     final receipts = List<Map<String, dynamic>>.from(response);
 
-    // Auto-cancel any pending order slip that is older than 7 days.
     await _autoCancelExpiredReceipts(receipts);
 
-    // Freeze any order item that has no saved name/price yet, so later
-    // edits to the furniture never change the generated order slip.
-    // The snapshot is only trusted once the database confirms it was saved.
     bool snapshotSaveFailed = false;
 
     for (final receipt in receipts) {
@@ -224,7 +230,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
               .select();
 
           if (saved.isEmpty) {
-            // 0 rows updated -> almost always an RLS UPDATE policy problem.
             snapshotSaveFailed = true;
             debugPrint(
                 "⚠️ Snapshot NOT saved for preorder ${receipt['preorder_id']} / furniture ${item['furniture_id']}. Check RLS UPDATE policy for PREORDER_ITEMS.");
@@ -266,39 +271,45 @@ class _ManageReceiptState extends State<ManageReceipt> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
+        insetPadding: EdgeInsets.symmetric(horizontal: _isTablet ? 40 : 16, vertical: 24),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         backgroundColor: const Color(0xFFF9F6F1),
         title: const Text(
           "Cancellation Receipt",
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.brown),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Please provide a reason for cancelling this receipt:",
-              style: TextStyle(fontSize: 14, color: Colors.black54),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: messageController,
-              maxLines: 3,
-              decoration: InputDecoration(
-                hintText: "Enter cancellation reason...",
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.black12),
+        content: SizedBox(
+          width: (_screenWidth - 64).clamp(260.0, 450.0).toDouble(),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Please provide a reason for cancelling this receipt:",
+                  style: TextStyle(fontSize: 14, color: Colors.black54),
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.brown),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: messageController,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    hintText: "Enter cancellation reason...",
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Colors.black12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Colors.brown),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
         actions: [
           TextButton(
@@ -559,7 +570,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            HeaderText(label),
+            Flexible(child: HeaderText(label)),
             const SizedBox(width: 4),
             Icon(
               active
@@ -683,8 +694,6 @@ class _ManageReceiptState extends State<ManageReceipt> {
         for (var item in itemsList) {
           final furnitureData = item['FURNITURE'] ?? item['furniture'];
 
-          // Prefer the saved snapshot; fall back to live furniture data
-          // only for items that have no snapshot yet.
           final String name = (item['item_name'] ??
                   (furnitureData != null ? furnitureData['furniture_name'] : null) ??
                   "Unknown Furniture")
@@ -706,190 +715,214 @@ class _ManageReceiptState extends State<ManageReceipt> {
       }
     }
 
+    final bool narrowDialog = _screenWidth < 520;
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-          backgroundColor: const Color(0xFFF9F6F1),
-          content: SizedBox(
-            width: 550,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "Order Slip ID: $targetReceiptId",
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black54),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          "Name: $customerName",
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 14, color: Colors.brown),
-                        ),
-                      ],
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Email: $customerEmail",
-                            style: const TextStyle(color: Colors.black45, fontSize: 14)),
-                        const SizedBox(height: 2),
-                        Text("Phone: $customerPhone",
-                            style: const TextStyle(color: Colors.black45, fontSize: 14)),
-                      ],
-                    ),
-                  ],
-                ),
-                const Divider(height: 30, thickness: 1.2),
+        builder: (context, setModalState) {
+          final Widget idBlock = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Order Slip ID: $targetReceiptId",
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black54),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                "Name: $customerName",
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600, fontSize: 14, color: Colors.brown),
+              ),
+            ],
+          );
 
-                if (currentStatus.toLowerCase() == 'cancelled' &&
-                    denialMessage != null &&
-                    denialMessage.isNotEmpty) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.red.shade200),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.cancel_outlined, color: Colors.red.shade400, size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
+          final Widget contactBlock = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Email: $customerEmail",
+                  style: const TextStyle(color: Colors.black45, fontSize: 14)),
+              const SizedBox(height: 2),
+              Text("Phone: $customerPhone",
+                  style: const TextStyle(color: Colors.black45, fontSize: 14)),
+            ],
+          );
+
+          return AlertDialog(
+            insetPadding: EdgeInsets.symmetric(horizontal: _isTablet ? 40 : 16, vertical: 24),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+            backgroundColor: const Color(0xFFF9F6F1),
+            content: SizedBox(
+              width: _dialogWidth,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    narrowDialog
+                        ? Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                "Denial Reason",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                  color: Colors.red.shade700,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                denialMessage,
-                                style: TextStyle(fontSize: 13, color: Colors.red.shade800),
-                              ),
+                              Align(alignment: Alignment.centerLeft, child: idBlock),
+                              const SizedBox(height: 10),
+                              Align(alignment: Alignment.centerLeft, child: contactBlock),
+                            ],
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              idBlock,
+                              contactBlock,
                             ],
                           ),
+                    const Divider(height: 30, thickness: 1.2),
+
+                    if (currentStatus.toLowerCase() == 'cancelled' &&
+                        denialMessage != null &&
+                        denialMessage.isNotEmpty) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.red.shade200),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.cancel_outlined, color: Colors.red.shade400, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "Denial Reason",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: Colors.red.shade700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    denialMessage,
+                                    style: TextStyle(fontSize: 13, color: Colors.red.shade800),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: const [
+                        Expanded(
+                          flex: 4,
+                          child: Text("All Pre-ordered Furniture:",
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Text("Item Price",
+                              textAlign: TextAlign.end,
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
+                    const SizedBox(height: 12),
 
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const [
-                    Expanded(
-                      flex: 4,
-                      child: Text("All Pre-ordered Furniture:",
-                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+                    WidgetBC(flattenedCustomerItems: flattenedCustomerItems),
+                    const SizedBox(height: 10),
+                    const Divider(thickness: 1.0, color: Colors.black12),
+
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("Total Price:",
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black54)),
+                          Text(
+                            "₱${calculatedGrandTotal.toStringAsFixed(2)}",
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 18, color: Colors.brown),
+                          ),
+                        ],
+                      ),
                     ),
-                    Expanded(
-                      flex: 2,
-                      child: Text("Item Price",
-                          textAlign: TextAlign.end,
-                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
-                    ),
+                    const SizedBox(height: 24),
+
+                    if (currentStatus.toLowerCase() == 'pending')
+                      _isActionLoading
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(8.0),
+                                child: CircularProgressIndicator(color: Colors.brown),
+                              ),
+                            )
+                          : Align(
+                              alignment: Alignment.centerRight,
+                              child: Wrap(
+                                alignment: WrapAlignment.end,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 12,
+                                runSpacing: 8,
+                                children: [
+                                  ElevatedButton(
+                                    onPressed: () async {
+                                      setModalState(() => _isActionLoading = true);
+                                      Navigator.pop(context);
+                                      await _updateStatus(targetPreorderId, 'Completed');
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFFE6DED6),
+                                      foregroundColor: Colors.brown,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(10)),
+                                      elevation: 0,
+                                    ),
+                                    child: const Text("Paid Order Slip"),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () => _showDenyDialog(targetPreorderId, targetReceiptId),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFFB06A6A),
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(10)),
+                                      elevation: 0,
+                                    ),
+                                    child: const Text("Cancel Order Slip"),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text("Close", style: TextStyle(color: Colors.black38)),
+                                  ),
+                                ],
+                              ),
+                            )
+                    else
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text("Close", style: TextStyle(color: Colors.black38)),
+                        ),
+                      ),
                   ],
                 ),
-                const SizedBox(height: 12),
-
-                WidgetBC(flattenedCustomerItems: flattenedCustomerItems),
-                const SizedBox(height: 10),
-                const Divider(thickness: 1.0, color: Colors.black12),
-
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text("Total Price:",
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black54)),
-                      Text(
-                        "₱${calculatedGrandTotal.toStringAsFixed(2)}",
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 18, color: Colors.brown),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                if (currentStatus.toLowerCase() == 'pending')
-                  _isActionLoading
-                      ? const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: CircularProgressIndicator(color: Colors.brown),
-                          ),
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            ElevatedButton(
-                              onPressed: () async {
-                                setModalState(() => _isActionLoading = true);
-                                Navigator.pop(context);
-                                await _updateStatus(targetPreorderId, 'Completed');
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFFE6DED6),
-                                foregroundColor: Colors.brown,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10)),
-                                elevation: 0,
-                              ),
-                              child: const Text("Paid Order Slip"),
-                            ),
-                            const SizedBox(width: 12),
-                            ElevatedButton(
-                              onPressed: () => _showDenyDialog(targetPreorderId, targetReceiptId),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFFB06A6A),
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10)),
-                                elevation: 0,
-                              ),
-                              child: const Text("Cancel Order Slip"),
-                            ),
-                            const SizedBox(width: 12),
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text("Close", style: TextStyle(color: Colors.black38)),
-                            ),
-                          ],
-                        )
-                else
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text("Close", style: TextStyle(color: Colors.black38)),
-                    ),
-                  ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -918,7 +951,7 @@ class _ManageReceiptState extends State<ManageReceipt> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeInOut,
-          padding: const EdgeInsets.only(top: 18, bottom: 14),
+          padding: EdgeInsets.only(top: _isTablet ? 18 : 12, bottom: _isTablet ? 14 : 10),
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
@@ -930,18 +963,22 @@ class _ManageReceiptState extends State<ManageReceipt> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                  color: isSelected ? Colors.black87 : Colors.black45,
+              Flexible(
+                child: Text(
+                  title,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: _tabFontSize,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    color: isSelected ? Colors.black87 : Colors.black45,
+                  ),
                 ),
               ),
               if (count > 0) ...[
-                const SizedBox(width: 8),
+                SizedBox(width: _isTablet ? 8 : 4),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: EdgeInsets.symmetric(
+                      horizontal: _isTablet ? 10 : 7, vertical: _isTablet ? 4 : 3),
                   decoration: BoxDecoration(
                     color: const Color(0xFF7A9E9F),
                     borderRadius: BorderRadius.circular(10),
@@ -963,40 +1000,43 @@ class _ManageReceiptState extends State<ManageReceipt> {
   Widget _errorView(Object? error) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline_rounded, size: 64, color: Colors.red),
-            const SizedBox(height: 20),
-            const Text(
-              "Couldn't load order slips",
-              style: TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.bold, color: Colors.brown),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              "$error",
-              style: const TextStyle(fontSize: 14, color: Colors.red, height: 1.4),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 28),
-            TextButton.icon(
-              onPressed: _refresh,
-              icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
-              label: const Text(
-                "Try Again",
+        padding: EdgeInsets.symmetric(horizontal: _isTablet ? 32 : 20),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline_rounded, size: 64, color: Colors.red),
+              const SizedBox(height: 20),
+              const Text(
+                "Couldn't load order slips",
                 style: TextStyle(
-                    fontWeight: FontWeight.w600, fontSize: 15, color: Colors.white),
+                    fontSize: 20, fontWeight: FontWeight.bold, color: Colors.brown),
+                textAlign: TextAlign.center,
               ),
-              style: TextButton.styleFrom(
-                backgroundColor: Colors.brown,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              const SizedBox(height: 10),
+              Text(
+                "$error",
+                style: const TextStyle(fontSize: 14, color: Colors.red, height: 1.4),
+                textAlign: TextAlign.center,
               ),
-            ),
-          ],
+              const SizedBox(height: 28),
+              TextButton.icon(
+                onPressed: _refresh,
+                icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+                label: const Text(
+                  "Try Again",
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 15, color: Colors.white),
+                ),
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.brown,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1024,179 +1064,288 @@ class _ManageReceiptState extends State<ManageReceipt> {
             onRefresh: () async => _refresh(),
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Customer Order Slips',
-                      style: TextStyle(
-                          color: Colors.brown, fontSize: 24, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 16),
-
-                    const Divider(color: Color(0xFFE0DAD5), thickness: 1, height: 1),
-                    const SizedBox(height: 20),
-
-                    Row(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: _contentMaxWidth),
+                  child: Padding(
+                    padding: EdgeInsets.all(_pagePadding),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            onChanged: (value) => setState(() => query = value),
-                            decoration: InputDecoration(
-                              hintText: "Search Order Slip...",
-                              prefixIcon: const Icon(Icons.search),
-                              filled: true,
-                              fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 15),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
-                              enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                  borderSide: BorderSide(color: Colors.brown.withOpacity(0.2))),
-                              focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                  borderSide: const BorderSide(color: Colors.brown)),
-                            ),
-                          ),
+                        Text(
+                          'Customer Order Slips',
+                          style: TextStyle(
+                              color: Colors.brown,
+                              fontSize: _titleSize,
+                              fontWeight: FontWeight.bold),
                         ),
-                        const SizedBox(width: 16),
-                        Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                  color: Colors.black12,
-                                  blurRadius: 4,
-                                  offset: Offset(0, 2)),
-                            ],
-                          ),
-                          child: IconButton(
-                            icon: const Icon(Icons.refresh, color: Colors.brown),
-                            onPressed: _refresh,
-                            tooltip: "Refresh",
+                        const SizedBox(height: 16),
+
+                        const Divider(color: Color(0xFFE0DAD5), thickness: 1, height: 1),
+                        const SizedBox(height: 20),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _searchController,
+                                onChanged: (value) => setState(() => query = value),
+                                decoration: InputDecoration(
+                                  hintText: "Search Order Slip...",
+                                  prefixIcon: const Icon(Icons.search),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 15),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+                                  enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(30),
+                                      borderSide: BorderSide(color: Colors.brown.withOpacity(0.2))),
+                                  focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(30),
+                                      borderSide: const BorderSide(color: Colors.brown)),
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: _isTablet ? 16 : 10),
+                            Container(
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                      color: Colors.black12,
+                                      blurRadius: 4,
+                                      offset: Offset(0, 2)),
+                                ],
+                              ),
+                              child: IconButton(
+                                icon: const Icon(Icons.refresh, color: Colors.brown),
+                                onPressed: _refresh,
+                                tooltip: "Refresh",
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: _isTablet ? 30 : 20),
+
+                        Center(
+                          child: Container(
+                            width: double.infinity,
+                            constraints: BoxConstraints(maxWidth: _isDesktop ? 1200 : 1000),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(_isTablet ? 24 : 16),
+                              boxShadow: const [
+                                BoxShadow(
+                                    color: Colors.black12,
+                                    blurRadius: 10,
+                                    offset: Offset(0, 4)),
+                              ],
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                      top: 8.0,
+                                      left: _isTablet ? 16 : 8,
+                                      right: _isTablet ? 16 : 8),
+                                  child: Row(
+                                    children: [
+                                      _buildChromeTab('Pending'),
+                                      _buildChromeTab('Completed'),
+                                      _buildChromeTab('Cancelled'),
+                                    ],
+                                  ),
+                                ),
+
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final Widget tableContent = Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 14, horizontal: 16),
+                                          decoration: const BoxDecoration(
+                                            border: Border(
+                                                bottom: BorderSide(
+                                                    color: Colors.black12, width: 1.5)),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              _sortHeader("ID", 'id'),
+                                              _sortHeader("Date Submitted", 'date'),
+                                              _sortHeader("Customer Name", 'name'),
+                                              const Expanded(child: HeaderText("Total Items")),
+                                              const Expanded(child: HeaderText("Status")),
+                                              const Expanded(child: HeaderText("Action")),
+                                            ],
+                                          ),
+                                        ),
+
+                                        if (filteredReceipts.isEmpty)
+                                          Padding(
+                                            padding: EdgeInsets.all(_isTablet ? 50.0 : 28.0),
+                                            child: Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(Icons.assignment_turned_in_outlined,
+                                                    size: 48, color: Colors.grey.shade400),
+                                                const SizedBox(height: 12),
+                                                Text(
+                                                  _getEmptyMessage(),
+                                                  textAlign: TextAlign.center,
+                                                  style: TextStyle(
+                                                    fontSize: 15,
+                                                    color: Colors.grey.shade600,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          )
+                                        else
+                                          Column(
+                                            children: filteredReceipts.map((receipt) {
+                                              final dynamic preorderRaw =
+                                                  receipt['PREORDER'] ?? receipt['preorder'];
+                                              Map<String, dynamic>? preorder;
+
+                                              if (preorderRaw is List && preorderRaw.isNotEmpty) {
+                                                preorder = preorderRaw.first;
+                                              } else if (preorderRaw is Map<String, dynamic>) {
+                                                preorder = preorderRaw;
+                                              }
+
+                                              final customerData = preorder != null
+                                                  ? (preorder['CUSTOMER'] ?? preorder['customer'])
+                                                  : null;
+                                              final String name = customerData != null
+                                                  ? (customerData['full_name'] ?? 'N/A')
+                                                  : 'N/A';
+                                              int totalQuantity = 0;
+
+                                              if (preorder != null) {
+                                                final List itemsList = preorder['PREORDER_ITEMS'] ??
+                                                    preorder['preorder_items'] ??
+                                                    [];
+                                                for (var i in itemsList) {
+                                                  totalQuantity += (i['quantity'] ?? 0) as int;
+                                                }
+                                              }
+
+                                              return tableRow(
+                                                receipt['receipt_id'].toString(),
+                                                receipt['issued_at'].toString().substring(0, 10),
+                                                name,
+                                                totalQuantity.toString(),
+                                                preorder != null
+                                                    ? (preorder['status'] ?? 'Pending')
+                                                    : 'Pending',
+                                                onView: () => _showReceiptDetails(receipt, preorder!),
+                                              );
+                                            }).toList(),
+                                          ),
+                                      ],
+                                    );
+
+                                    if (constraints.maxWidth >= _tableMinWidth) {
+                                      return tableContent;
+                                    }
+
+                                    return Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 10, bottom: 2),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(Icons.swipe_left_alt_rounded,
+                                                  size: 16, color: Colors.brown.withOpacity(0.6)),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                "Scroll sideways to see all columns",
+                                                style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.brown.withOpacity(0.6)),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Icon(Icons.swipe_right_alt_rounded,
+                                                  size: 16, color: Colors.brown.withOpacity(0.6)),
+                                            ],
+                                          ),
+                                        ),
+                                        Stack(
+                                          children: [
+                                            Scrollbar(
+                                              controller: _tableScrollController,
+                                              thumbVisibility: true,
+                                              trackVisibility: true,
+                                              child: SingleChildScrollView(
+                                                controller: _tableScrollController,
+                                                scrollDirection: Axis.horizontal,
+                                                padding: const EdgeInsets.only(bottom: 14),
+                                                child: SizedBox(
+                                                  width: _tableMinWidth,
+                                                  child: tableContent,
+                                                ),
+                                              ),
+                                            ),
+                                            Positioned(
+                                              right: 0,
+                                              top: 0,
+                                              bottom: 14,
+                                              child: IgnorePointer(
+                                                child: AnimatedBuilder(
+                                                  animation: _tableScrollController,
+                                                  builder: (context, _) {
+                                                    final bool hasMore =
+                                                        !_tableScrollController.hasClients ||
+                                                            !_tableScrollController
+                                                                .position.hasContentDimensions ||
+                                                            _tableScrollController
+                                                                    .position.extentAfter >
+                                                                1;
+                                                    return AnimatedOpacity(
+                                                      duration: const Duration(milliseconds: 200),
+                                                      opacity: hasMore ? 1 : 0,
+                                                      child: Container(
+                                                        width: 44,
+                                                        alignment: Alignment.centerRight,
+                                                        padding: const EdgeInsets.only(right: 4),
+                                                        decoration: BoxDecoration(
+                                                          gradient: LinearGradient(
+                                                            begin: Alignment.centerLeft,
+                                                            end: Alignment.centerRight,
+                                                            colors: [
+                                                              Colors.white.withOpacity(0),
+                                                              Colors.white,
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        child: const Icon(Icons.chevron_right_rounded,
+                                                            color: Colors.brown),
+                                                      ),
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 30),
-
-                    Center(
-                      child: Container(
-                        width: double.infinity,
-                        constraints: const BoxConstraints(maxWidth: 1000),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: const [
-                            BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 10,
-                                offset: Offset(0, 4)),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8.0, left: 16, right: 16),
-                              child: Row(
-                                children: [
-                                  _buildChromeTab('Pending'),
-                                  _buildChromeTab('Completed'),
-                                  _buildChromeTab('Cancelled'),
-                                ],
-                              ),
-                            ),
-
-                            Container(
-                              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                              decoration: const BoxDecoration(
-                                border: Border(
-                                    bottom: BorderSide(color: Colors.black12, width: 1.5)),
-                              ),
-                              child: Row(
-                                children: [
-                                  _sortHeader("ID", 'id'),
-                                  _sortHeader("Date Submitted", 'date'),
-                                  _sortHeader("Customer Name", 'name'),
-                                  const Expanded(child: HeaderText("Total Items")),
-                                  const Expanded(child: HeaderText("Status")),
-                                  const Expanded(child: HeaderText("Action")),
-                                ],
-                              ),
-                            ),
-
-                            if (filteredReceipts.isEmpty)
-                              Padding(
-                                padding: const EdgeInsets.all(50.0),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.assignment_turned_in_outlined,
-                                        size: 48, color: Colors.grey.shade400),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      _getEmptyMessage(),
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        color: Colors.grey.shade600,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            else
-                              Column(
-                                children: filteredReceipts.map((receipt) {
-                                  final dynamic preorderRaw =
-                                      receipt['PREORDER'] ?? receipt['preorder'];
-                                  Map<String, dynamic>? preorder;
-
-                                  if (preorderRaw is List && preorderRaw.isNotEmpty) {
-                                    preorder = preorderRaw.first;
-                                  } else if (preorderRaw is Map<String, dynamic>) {
-                                    preorder = preorderRaw;
-                                  }
-
-                                  final customerData = preorder != null
-                                      ? (preorder['CUSTOMER'] ?? preorder['customer'])
-                                      : null;
-                                  final String name = customerData != null
-                                      ? (customerData['full_name'] ?? 'N/A')
-                                      : 'N/A';
-                                  int totalQuantity = 0;
-
-                                  if (preorder != null) {
-                                    final List itemsList = preorder['PREORDER_ITEMS'] ??
-                                        preorder['preorder_items'] ??
-                                        [];
-                                    for (var i in itemsList) {
-                                      totalQuantity += (i['quantity'] ?? 0) as int;
-                                    }
-                                  }
-
-                                  return tableRow(
-                                    receipt['receipt_id'].toString(),
-                                    receipt['issued_at'].toString().substring(0, 10),
-                                    name,
-                                    totalQuantity.toString(),
-                                    preorder != null
-                                        ? (preorder['status'] ?? 'Pending')
-                                        : 'Pending',
-                                    onView: () => _showReceiptDetails(receipt, preorder!),
-                                  );
-                                }).toList(),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -1296,8 +1445,11 @@ class WidgetBC extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double maxListHeight =
+        (MediaQuery.of(context).size.height * 0.3).clamp(160.0, 320.0).toDouble();
+
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 200),
+      constraints: BoxConstraints(maxHeight: maxListHeight),
       child: flattenedCustomerItems.isEmpty
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 20),
@@ -1354,10 +1506,15 @@ class HeaderText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double width = MediaQuery.of(context).size.width;
     return Text(
       text,
       textAlign: TextAlign.center,
-      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.brown),
+      style: TextStyle(
+        fontWeight: FontWeight.bold,
+        color: Colors.brown,
+        fontSize: width >= 1024 ? 15 : (width >= 600 ? 14 : 13),
+      ),
     );
   }
 }
@@ -1368,11 +1525,15 @@ class CellText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double width = MediaQuery.of(context).size.width;
     return Text(
       text,
       textAlign: TextAlign.center,
       overflow: TextOverflow.ellipsis,
       maxLines: 1,
+      style: TextStyle(
+        fontSize: width >= 1024 ? 15 : (width >= 600 ? 14 : 13),
+      ),
     );
   }
 }
