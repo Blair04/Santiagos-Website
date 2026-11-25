@@ -4,10 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Products with 1..this many units are "low stock"; 0 is "out of stock".
 const int _lowStockThreshold = 1;
 
-/// Totals used by both the preorder summary card and status donut chart.
 class PreorderSummary {
   final int pendingCount;
   final int completedCount;
@@ -22,20 +20,18 @@ class PreorderSummary {
   int get total => pendingCount + completedCount + cancelledCount;
 }
 
-/// A catalog item that reached the dashboard's low-stock threshold.
 class FurnitureStockAlert {
   final String furnitureName;
   final int stockLeft;
-  final int? furnitureId; //new
+  final int? furnitureId; 
 
   const FurnitureStockAlert({
     required this.furnitureName,
     required this.stockLeft,
-    this.furnitureId, //new
+    this.furnitureId, 
   });
 }
 
-/// Aggregated preorder demand for one furniture product.
 class TopPreorderItem {
   final String name;
   final int quantity;
@@ -43,7 +39,6 @@ class TopPreorderItem {
   const TopPreorderItem({required this.name, required this.quantity});
 }
 
-/// Number of generated pre-order slips recorded for one calendar day.
 class DailyPreorderActivity {
   final DateTime date;
   final int count;
@@ -56,14 +51,12 @@ class DailyPreorderActivity {
   });
 }
 
-/// Completed-order revenue grouped by preorder date for the trend chart.
 class DailyRevenueMetric {
   final DateTime date;
   final double amount;
   const DailyRevenueMetric({required this.date, required this.amount});
 }
 
-/// Current stock grouped by catalog category for the compact ranked panel.
 class CategoryStockMetric {
   final String name;
   final int stockUnits;
@@ -97,7 +90,6 @@ class TopFurnitureRevenueMetric {
   });
 }
 
-/// Receipt activity available from the existing dashboard select.
 class RecentReceiptMetric {
   final String receiptId;
   final String customerName;
@@ -114,12 +106,11 @@ class RecentReceiptMetric {
   });
 }
 
-/// Loads live store statistics from Supabase and presents the admin dashboard.
 class DashboardScreen extends StatefulWidget {
   final VoidCallback? onViewProducts;
   final VoidCallback? onViewSales;
   final VoidCallback? onViewReceipts;
-  final void Function(int furnitureId, int stockLeft)? onProductSelected; //new
+  final void Function(int furnitureId, int stockLeft)? onProductSelected; 
   final void Function(String receiptId)? onReceiptSelected;
 
   const DashboardScreen({
@@ -146,7 +137,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static const Color _mutedOrange = Color(0xFFF0AD4E);
 
   final SupabaseClient _supabase = Supabase.instance.client;
-  final ScrollController _receiptsScrollController = ScrollController(); // NEW
+  final ScrollController _receiptsScrollController = ScrollController(); 
 
   DashboardData? _dashboardData;
   Object? _loadError;
@@ -163,8 +154,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _subscribeToDashboardChanges();
   }
 
-  /// Listen for database changes so completed orders and stock edits are
-  /// reflected without requiring the manager to press Refresh.
   void _subscribeToDashboardChanges() {
     final channel = _supabase.channel('dashboard-live-updates');
 
@@ -204,7 +193,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
-    _receiptsScrollController.dispose(); // NEW
+    _receiptsScrollController.dispose(); 
     final channel = _dashboardRealtimeChannel;
     if (channel != null) {
       _supabase.removeChannel(channel);
@@ -212,8 +201,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  /// Reads the dashboard tables together so one refresh produces one
-  /// consistent set of statistics instead of updating cards independently.
   Future<void> _fetchDashboardData({bool showLoading = true}) async {
     if (mounted && showLoading) {
       setState(() {
@@ -223,8 +210,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     try {
-      // These independent selects run in parallel. Relational fields on
-      // PREORDER_ITEMS and RECEIPT are resolved through Supabase foreign keys.
       final responses = await Future.wait<dynamic>([
         _supabase.from('PREORDER').select('preorder_id, status, total_price, preordered_at'),
         _supabase
@@ -264,8 +249,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         '''),
       ]);
 
-      // Keep Supabase access in this method and calculation rules in
-      // DashboardData so the widget-building methods only render prepared data.
       final data = DashboardData.fromRows(
         preorderRows: _asRows(responses[0]),
         furnitureRows: _asRows(responses[1]),
@@ -301,8 +284,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Same loading style as Manage Products: the whole page is replaced by a
-    // centered brown spinner while data loads or the refresh button is used.
     if (_isLoading) {
       return const Scaffold(
         backgroundColor: _background,
@@ -315,8 +296,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: LayoutBuilder(
         builder: (context, viewportConstraints) {
           final viewportWidth = viewportConstraints.maxWidth;
-          // Use the actual dashboard content width. This remains correct when
-          // the desktop side menu takes part of the browser width.
           final horizontalPadding = viewportWidth < 600
               ? 18.0
               : viewportWidth < 1000
@@ -341,7 +320,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildHeader(viewportWidth),
-                      SizedBox(height: viewportWidth < 600 ? 24 : 32), // CHANGED
+                      SizedBox(height: viewportWidth < 600 ? 24 : 32), 
                       if (_isLoading && _dashboardData == null)
                         _buildLoadingState()
                       else if (_loadError != null && _dashboardData == null)
@@ -371,7 +350,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Text(
           '${_greetingFor(now)}, Manager!',
           style: TextStyle(
-            fontSize: isMobile ? 26 : 34, // CHANGED
+            fontSize: isMobile ? 26 : 34, 
             fontWeight: FontWeight.w800,
             letterSpacing: -0.5,
             color: _ink,
@@ -381,7 +360,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Text(
           'Here’s an overview of Santiago’s Furniture.',
           style: TextStyle(
-            fontSize: isMobile ? 14 : 15, // CHANGED
+            fontSize: isMobile ? 14 : 15, 
             color: Colors.grey.shade600,
             fontWeight: FontWeight.w400,
           ),
@@ -389,7 +368,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ],
     );
 
-    // CHANGED: Row -> Wrap so "Updated at" + refresh never overflow on phones.
     final actions = Wrap(
       spacing: 12,
       runSpacing: 10,
@@ -539,10 +517,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Composes the reference-style overview without changing the existing
-  /// Supabase reads. Detailed preorder and stock panels remain available below.
-  /// A refresh error keeps the previous data visible and adds a warning above
-  /// it instead of replacing the dashboard with an empty error screen.
   Widget _buildDashboardContent(DashboardData data) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -654,9 +628,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final spacing = constraints.maxWidth < 600 ? 16.0 : 24.0;
-        // Three summary cards share one row on laptop/wide-tablet widths.
-        // On phones and narrow tablets they stack in one column.
-        final columns = constraints.maxWidth >= 720 ? 3 : 1; // CHANGED
+        final columns = constraints.maxWidth >= 720 ? 3 : 1; 
         final width =
             (constraints.maxWidth - spacing * (columns - 1)) / columns;
         return Wrap(
@@ -847,8 +819,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Each analytics pair becomes a vertical stack before its text or
-        // chart labels can overflow.
         if (constraints.maxWidth < 760) {
           return Column(children: [left, const SizedBox(height: 24), right]);
         }
@@ -869,8 +839,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Stack all three rather than wrapping 2 + 1, so the row never ends
-        // up with one card twice as wide as the others.
         if (constraints.maxWidth < 800) {
           return Column(
             children: [
@@ -1192,7 +1160,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               message: 'No recent transactions are available.',
             )
           else ...[
-            if (MediaQuery.of(context).size.width < 700) // NEW: phone/tablet hint
+            if (MediaQuery.of(context).size.width < 700)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
@@ -1208,12 +1176,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             Scrollbar(
               controller: _receiptsScrollController,
-              thumbVisibility: true, // NEW: always-visible scroll indicator
+              thumbVisibility: true, 
               trackVisibility: true,
               child: SingleChildScrollView(
               controller: _receiptsScrollController,
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.only(bottom: 14), // room for scrollbar
+              padding: const EdgeInsets.only(bottom: 14), 
               child: DataTable(
                 showCheckboxColumn: false,
                 headingRowColor: WidgetStatePropertyAll(const Color(0xFFFBF8F5)),
@@ -1282,8 +1250,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 return SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: ConstrainedBox(
-                    // Fill the snapshot width when the columns fit, but allow
-                    // horizontal scrolling if a narrow window needs more room.
                     constraints: BoxConstraints(minWidth: constraints.maxWidth),
                     child: DataTable(
                       horizontalMargin: 10,
@@ -1322,12 +1288,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Stock overview built from active VARIANT stock, grouped per product.
-  /// Each product lands in exactly one panel:
-  ///   out of stock = 0 units, low stock = 1.._lowStockThreshold units,
-  ///   in stock = more than _lowStockThreshold units.
-  /// Classification happens in DashboardData.fromRows and refreshes through
-  /// the existing Supabase realtime subscription.
   Widget _buildStockOverviewSection(DashboardData data) {
     final lowStockItems = data.productStock
         .where((p) => p.stockLeft > 0 && p.stockLeft <= _lowStockThreshold)
@@ -1474,11 +1434,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     ];
 
-    final bool isPhone = MediaQuery.of(context).size.width < 600; // NEW
+    final bool isPhone = MediaQuery.of(context).size.width < 600; 
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(isPhone ? 14 : 18), // CHANGED
+      padding: EdgeInsets.all(isPhone ? 14 : 18), 
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
@@ -1494,8 +1454,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // CHANGED: header adapts - shorter button label and no icon box on
-          // narrow widths so it never overflows.
           LayoutBuilder(
             builder: (context, headerConstraints) {
               final bool narrow = headerConstraints.maxWidth < 520;
@@ -1569,7 +1527,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Container(
             width: double.infinity,
             padding: EdgeInsets.symmetric(
-              horizontal: isPhone ? 14 : 18, // CHANGED
+              horizontal: isPhone ? 14 : 18, 
               vertical: 12,
             ),
             decoration: BoxDecoration(
@@ -1608,7 +1566,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _formatCount(data.totalStockCount),
                   style: TextStyle(
                     color: _ink,
-                    fontSize: isPhone ? 24 : 29, // CHANGED
+                    fontSize: isPhone ? 24 : 29, 
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
                   ),
@@ -1993,12 +1951,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required Widget child,
     Widget? trailing,
   }) {
-    // NEW: tighter padding on phones so charts/tables get more room.
     final bool isPhone = MediaQuery.of(context).size.width < 600;
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(isPhone ? 18 : 28), // CHANGED
+      padding: EdgeInsets.all(isPhone ? 18 : 28), 
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
@@ -2039,7 +1996,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               fontWeight: FontWeight.w500,
             ),
           ),
-          SizedBox(height: isPhone ? 18 : 24), // CHANGED
+          SizedBox(height: isPhone ? 18 : 24),
           child,
         ],
       ),
@@ -2197,10 +2154,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-/// Immutable, display-ready statistics calculated from raw Supabase rows.
-///
-/// Keeping these calculations outside the widgets makes the rendering code
-/// simpler and gives every card and graph the same normalized source values.
 class DashboardData {
   final PreorderSummary preorderStats;
   final double completedRevenue;
@@ -2217,7 +2170,6 @@ class DashboardData {
   final List<CategoryStockMetric> categoryStock;
   final List<TopPreorderItem> topPreorders;
   final List<FurnitureStockAlert> stockAlerts;
-  /// Every active product with its current stock (used by Stock Overview).
   final List<FurnitureStockAlert> productStock;
   final List<DailyPreorderActivity> weeklyActivity;
   final List<DailyRevenueMetric> weeklyRevenue;
@@ -2302,8 +2254,6 @@ class DashboardData {
     var cancelledCount = 0;
     var completedRevenue = 0.0;
 
-    // Normalize status text before counting so casing and accepted aliases do
-    // not split one business state into several dashboard categories.
     for (final preorder in preorderRows) {
       final status = _normalizeStatus(preorder['status']);
       if (status == 'pending') {
@@ -2316,8 +2266,6 @@ class DashboardData {
       }
     }
 
-    // The donut is an order-slip breakdown, so count statuses from RECEIPT
-    // rows rather than counting every preorder record in the database.
     pendingCount = 0;
     completedCount = 0;
     cancelledCount = 0;
@@ -2350,14 +2298,10 @@ class DashboardData {
                 : 'Uncategorized',
     };
 
-    // Keep every category in the map, including categories whose stock is zero.
     final categoryStockByName = <String, int>{
       for (final name in categoryById.values.toSet()) name: 0,
     };
 
-    // Stock belongs to VARIANT for variant-backed furniture. Only active
-    // variants are counted. A furniture row with no variants uses its legacy
-    // FURNITURE.stock value as a fallback.
     for (final furniture in furnitureRows) {
       final rawVariants = furniture['VARIANT'] ?? furniture['variant'];
       final variants = rawVariants is List ? rawVariants : <dynamic>[];
@@ -2391,7 +2335,6 @@ class DashboardData {
         ifAbsent: () => furnitureStock,
       );
 
-      // Per-product classification for the Stock Overview.
       final product = FurnitureStockAlert(
         
         furnitureId: _asInt(furniture['furniture_id']),
@@ -2436,8 +2379,6 @@ class DashboardData {
           });
 
     final preorderDemand = <String, int>{};
-    // Demand combines direct furniture items and variant-backed items. Orders
-    // with a cancelled status are excluded from the recommendation signal.
     for (final item in preorderItemRows) {
       final preorder = _relationMap(item['PREORDER'] ?? item['preorder']);
       final status = _normalizeStatus(preorder?['status']);
@@ -2545,11 +2486,6 @@ class DashboardData {
       ],
     );
 
-    // Sales Activity: ONLY completed pre-orders, ONLY the last 7 days.
-    // Source is the PREORDER table (status + total_price + preordered_at).
-    // A completed order is dated by the later of its preorder date and its
-    // receipt's issued date, so an order placed earlier but completed this
-    // week still lands inside the 7-day window.
     final receiptIssuedByPreorder = <String, DateTime>{};
     for (final receipt in receiptRows) {
       final issued =
@@ -2584,7 +2520,7 @@ class DashboardData {
       if (saleDate == null) continue;
 
       final date = _dateOnly(saleDate);
-      if (!weeklyCounts.containsKey(date)) continue; // outside last 7 days
+      if (!weeklyCounts.containsKey(date)) continue; 
 
       weeklyCounts[date] = (weeklyCounts[date] ?? 0) + 1;
       revenueByDate[date] =
@@ -2662,7 +2598,6 @@ class DashboardData {
   }
 }
 
-/// Draws the preorder distribution without adding a chart dependency.
 class _DonutChartPainter extends CustomPainter {
   final List<int> values;
   final List<Color> colors;
@@ -2688,7 +2623,6 @@ class _DonutChartPainter extends CustomPainter {
     var startAngle = -math.pi / 2;
     for (var index = 0; index < values.length; index++) {
       if (values[index] == 0) continue;
-      // Convert each status count into its proportional slice of a full circle.
       final sweepAngle = (values[index] / total) * math.pi * 2;
       final segmentPaint = Paint()
         ..color = colors[index]
@@ -2706,7 +2640,6 @@ class _DonutChartPainter extends CustomPainter {
   }
 }
 
-/// Draws the compact reference-style trend line used by each headline card.
 class _SparklinePainter extends CustomPainter {
   final List<double> values;
   final Color color;
@@ -2769,9 +2702,6 @@ class _SparklinePainter extends CustomPainter {
   }
 }
 
-/// Lays children side by side with flex-proportional widths and stretches them
-/// all to the tallest child's height. IntrinsicHeight cannot be used here
-/// because the section cards contain LayoutBuilders.
 class _EqualHeightRow extends MultiChildRenderObjectWidget {
   final List<int> flexes;
   final double spacing;
@@ -2849,8 +2779,6 @@ class _RenderEqualHeightRow extends RenderBox
       for (final flex in _flexes) available * flex / math.max(totalFlex, 1),
     ];
 
-    // First pass measures each child's natural height at its column width;
-    // the second pass forces every child to the tallest of those heights.
     var rowHeight = 0.0;
     for (var i = 0; i < children.length; i++) {
       children[i].layout(
@@ -2886,7 +2814,6 @@ class _RenderEqualHeightRow extends RenderBox
   }
 }
 
-/// Scales completed-slip revenue across the last seven days.
 class _WeeklyActivityChart extends StatelessWidget {
   static const List<String> _dayNames = [
     'MON',
@@ -2923,8 +2850,6 @@ class _WeeklyActivityChart extends StatelessWidget {
                     '${_dayNames[activity[index].date.weekday - 1]}, ${activity[index].count} completed slips, earned ${activity[index].amount.toStringAsFixed(2)} pesos',
                 child: Column(
                   children: [
-                  // CHANGED: FittedBox so the amount label shrinks instead of
-                  // overflowing on narrow phone columns.
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
@@ -2989,7 +2914,6 @@ class _WeeklyActivityChart extends StatelessWidget {
   }
 }
 
-/// Seven-day revenue chart based only on completed (paid) pre-orders.
 class _WeeklyRevenueChart extends StatelessWidget {
   final List<DailyRevenueMetric> activity;
   const _WeeklyRevenueChart({required this.activity});
@@ -3004,7 +2928,6 @@ class _WeeklyRevenueChart extends StatelessWidget {
           Expanded(
             child: Column(
               children: [
-                // CHANGED: FittedBox for narrow screens.
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(activity[i].amount.toStringAsFixed(0), maxLines: 1, style: const TextStyle(color: Color(0xFF7A6865), fontSize: 10, fontWeight: FontWeight.w700)),
@@ -3017,7 +2940,6 @@ class _WeeklyRevenueChart extends StatelessWidget {
                       alignment: Alignment.bottomCenter,
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 300),
-                        // CHANGED: bar narrows on very small columns.
                         width: constraints.maxWidth < 28
                             ? constraints.maxWidth * 0.55
                             : 24,
@@ -3043,8 +2965,6 @@ class _WeeklyRevenueChart extends StatelessWidget {
 }
 
 Map<String, dynamic>? _relationMap(dynamic value) {
-  // PostgREST relations can be returned as one map or as a one-item list,
-  // depending on the relationship cardinality. Normalize both shapes here.
   if (value is Map) {
     return Map<String, dynamic>.from(value);
   }
@@ -3087,13 +3007,10 @@ DateTime _dateOnly(DateTime date) {
   return DateTime(date.year, date.month, date.day);
 }
 
-/// Calendar-safe "n days before [date]" (avoids DST hour drift that
-/// Duration-based subtraction can cause, which would break date matching).
 DateTime _daysAgo(DateTime date, int days) {
   return DateTime(date.year, date.month, date.day - days);
 }
 
-/// A stock row that visibly reacts to hover and press so it reads as clickable.
 class _HoverableStockRow extends StatefulWidget {
   final String name;
   final String valueText;
@@ -3134,7 +3051,7 @@ class _HoverableStockRowState extends State<_HoverableStockRow> {
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: widget.onTap,
-          hoverColor: Colors.transparent, // we draw our own hover below
+          hoverColor: Colors.transparent, 
           splashColor: widget.color.withValues(alpha: 0.12),
           highlightColor: widget.color.withValues(alpha: 0.08),
           child: AnimatedContainer(
