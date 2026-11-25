@@ -1,11 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_application_1/main_screens/responsive_side_menu.dart';
-import 'register_screen.dart';
-import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -43,12 +41,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final session = _supabase.auth.currentSession;
 
     if (isAdminLoggedIn && session != null && mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const MainResponsivePage(),
-        ),
-      );
+      context.go('/home/dashboard');
     }
   }
 
@@ -80,12 +73,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.setBool('isAdminLoggedIn', true);
 
         if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const MainResponsivePage(),
-            ),
-          );
+          context.go('/home/dashboard');
         }
       } else {
         _showSnackBar(
@@ -144,7 +132,7 @@ class _LoginScreenState extends State<LoginScreen> {
             return _buildDesktopLayout(constraints);
           }
 
-          return _buildMobileLayout(constraints); 
+          return _buildMobileLayout(constraints);
         },
       ),
     );
@@ -209,7 +197,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final double width = constraints.maxWidth;
     final double height = constraints.maxHeight;
 
-    final bool isShort = height < 560; 
+    final bool isShort = height < 560;
     final bool isTablet = width >= 600;
 
     final double logoSize = isShort
@@ -395,14 +383,7 @@ class _LoginScreenState extends State<LoginScreen> {
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ForgotPasswordScreen(),
-                ),
-              );
-            },
+            onPressed: () => context.push('/forgot-password'),
             style: TextButton.styleFrom(
               padding: EdgeInsets.zero,
               minimumSize: const Size(50, 30),

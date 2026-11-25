@@ -2,36 +2,66 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_application_1/main_screens/dashboard_screen.dart';
 import 'package:flutter_application_1/main_screens/manage_receipt_screen.dart';
 import 'package:flutter_application_1/main_screens/products_sales_screen.dart';
 import 'package:flutter_application_1/main_screens/manage_furniture.dart';
-import 'package:flutter_application_1/main_screens/login_screen.dart';
 import 'package:flutter_application_1/main_screens/manage_category_screen.dart';
 import 'package:flutter_application_1/main_screens/manage_profile_screen.dart';
 import 'package:flutter_application_1/main_screens/session_listener.dart';
 
-
 class MainResponsivePage extends StatefulWidget {
-  const MainResponsivePage({super.key});
+  final String tab;
+  const MainResponsivePage({super.key, this.tab = 'dashboard'});
   @override
   State<MainResponsivePage> createState() => _MainResponsivePageState();
 }
 
 class _MainResponsivePageState extends State<MainResponsivePage> {
   static const String _localAvatarKey = 'santiagoBusinessLogoBase64';
-  int _selectedIndex = 0;
+
+  // Order must match the nav item indexes (0..5)
+  static const List<String> _tabs = [
+    'dashboard', // 0
+    'receipts', // 1
+    'products', // 2
+    'categories', // 3
+    'sales', // 4
+    'account', // 5
+  ];
+
   int? _highlightFurnitureId;
   int _highlightStock = 0;
-  String? _highlightReceiptId; 
+  String? _highlightReceiptId;
   bool _isDrawerOpen = false;
   Uint8List? _profileAvatarBytes;
+
+  // The selected page now comes from the URL
+  int get _selectedIndex {
+    final i = _tabs.indexOf(widget.tab);
+    return i < 0 ? 0 : i;
+  }
 
   @override
   void initState() {
     super.initState();
     _loadProfileAvatar();
+  }
+
+  @override
+  void didUpdateWidget(covariant MainResponsivePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Also runs when the browser Back/Forward button changes the tab
+    if (oldWidget.tab != widget.tab) {
+      if (_selectedIndex != 2) _highlightFurnitureId = null;
+      if (_selectedIndex != 1) _highlightReceiptId = null;
+    }
+  }
+
+  void _goToTab(int index) {
+    context.go('/home/${_tabs[index]}');
   }
 
   Future<void> _loadProfileAvatar() async {
@@ -54,14 +84,12 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isAdminLoggedIn', false);
     if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-      (route) => false,
-    );
+
+    final messenger = ScaffoldMessenger.of(context);
+    context.go('/login');
 
     if (wasTimeout) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(
           content: Text('Logged out due to 30 minutes of inactivity.'),
           backgroundColor: Colors.orangeAccent,
@@ -82,7 +110,6 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-
           title: const Row(
             children: [
               Icon(Icons.logout_rounded, color: Color(0xFFFF8383)),
@@ -90,14 +117,13 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
               Expanded(child: Text('Confirm Logout')),
             ],
           ),
-
           content: const Text(
             'Are you sure you want to log out?',
             style: TextStyle(
-              color: Color.fromARGB(255, 92, 71, 69), height: 1.5,
+              color: Color.fromARGB(255, 92, 71, 69),
+              height: 1.5,
             ),
           ),
-
           actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           actions: [
             TextButton(
@@ -107,7 +133,6 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
                 style: TextStyle(color: Color(0xFF805445)),
               ),
             ),
-
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color.fromARGB(255, 255, 69, 69),
@@ -116,7 +141,6 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-
               onPressed: () => Navigator.pop(dialogContext, true),
               child: const Text('Yes, Logout'),
             ),
@@ -125,14 +149,10 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
       },
     );
 
-
-
     if (shouldLogout == true && mounted) {
       await _handleLogout();
     }
   }
-
-
 
   String _getTitle() {
     switch (_selectedIndex) {
@@ -154,11 +174,9 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
   }
 
   void _onNavItemSelected(int index) {
-    setState(() {
-      _selectedIndex = index;
-      if (index != 2) _highlightFurnitureId = null;
-      if (index != 1) _highlightReceiptId = null; 
-    });
+    if (index != 2) _highlightFurnitureId = null;
+    if (index != 1) _highlightReceiptId = null;
+    _goToTab(index);
   }
 
   @override
@@ -166,36 +184,28 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
     final List<Widget> screens = [
       DashboardScreen(
         onViewProducts: () {
-          if (mounted) setState(() => _selectedIndex = 2);
+          if (mounted) _goToTab(2);
         },
         onViewReceipts: () {
           if (mounted) {
-            setState(() {
-              _selectedIndex = 1;
-              _highlightReceiptId = null; 
-            });
+            _highlightReceiptId = null;
+            _goToTab(1);
           }
         },
         onViewSales: () {
-          if (mounted) setState(() => _selectedIndex = 4);
+          if (mounted) _goToTab(4);
         },
         onProductSelected: (id, stock) {
-          setState(() {
-            _selectedIndex = 2;
-            _highlightFurnitureId = id;
-            _highlightStock = stock;
-          });
+          _highlightFurnitureId = id;
+          _highlightStock = stock;
+          _goToTab(2);
         },
-
         onReceiptSelected: (receiptId) {
           if (!mounted) return;
-          setState(() {
-            _selectedIndex = 1;
-            _highlightReceiptId = receiptId;
-          });
+          _highlightReceiptId = receiptId;
+          _goToTab(1);
         },
       ),
-
       ManageReceipt(
         key: ValueKey('manage-receipt-${_highlightReceiptId ?? 'none'}'),
         initialReceiptId: _highlightReceiptId,
@@ -212,9 +222,9 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double w = constraints.maxWidth;
-        final bool isDesktop = w >= 1024; 
-        final bool isTablet = w >= 600 && w < 1024; 
-        final bool showSidebar = w >= 600; 
+        final bool isDesktop = w >= 1024;
+        final bool isTablet = w >= 600 && w < 1024;
+        final bool showSidebar = w >= 600;
 
         return SessionListener(
           duration: const Duration(minutes: 30),
@@ -243,40 +253,42 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
                           duration: const Duration(milliseconds: 280),
                           switchInCurve: Curves.easeOutBack,
                           switchOutCurve: Curves.easeIn,
-                          transitionBuilder: (child, animation) => RotationTransition(
-                            turns: Tween<double>(begin: 0.75, end: 1).animate(animation),
-                            child: FadeTransition(opacity: animation, child: child),
+                          transitionBuilder: (child, animation) =>
+                              RotationTransition(
+                            turns: Tween<double>(begin: 0.75, end: 1)
+                                .animate(animation),
+                            child: FadeTransition(
+                                opacity: animation, child: child),
                           ),
                           child: Icon(
-                            _isDrawerOpen ? Icons.close_rounded : Icons.menu_rounded,
+                            _isDrawerOpen
+                                ? Icons.close_rounded
+                                : Icons.menu_rounded,
                             key: ValueKey<bool>(_isDrawerOpen),
                           ),
                         ),
                       ),
                     ),
                   ),
-
             drawer: showSidebar
                 ? null
                 : Drawer(
-                    width: math.min(300.0, w * 0.85), 
+                    width: math.min(300.0, w * 0.85),
                     backgroundColor: NavigationContent.sidebarColor,
                     surfaceTintColor: Colors.transparent,
                     elevation: 0,
                     child: NavigationContent(
                       selectedIndex: _selectedIndex,
                       onItemSelected: (index) {
+                        Navigator.pop(context); // close drawer first
                         _onNavItemSelected(index);
-                        Navigator.pop(context);
                       },
-
                       onLogout: _confirmLogout,
                       profileAvatarBytes: _profileAvatarBytes,
                       showCloseButton: _isDrawerOpen,
                       onClose: () => Navigator.of(context).pop(),
                     ),
                   ),
-
             body: Row(
               children: [
                 if (showSidebar)
@@ -285,16 +297,14 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
                       topRight: Radius.circular(30),
                       bottomRight: Radius.circular(30),
                     ),
-
                     child: SizedBox(
-                      width: isDesktop ? 250 : 88, 
+                      width: isDesktop ? 250 : 88,
                       child: NavigationContent(
                         selectedIndex: _selectedIndex,
                         onItemSelected: _onNavItemSelected,
-
                         onLogout: _confirmLogout,
                         profileAvatarBytes: _profileAvatarBytes,
-                        compact: isTablet, 
+                        compact: isTablet,
                       ),
                     ),
                   ),
@@ -308,7 +318,6 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
   }
 }
 
-
 class NavigationContent extends StatelessWidget {
   final Function(int) onItemSelected;
   final VoidCallback onLogout;
@@ -316,8 +325,7 @@ class NavigationContent extends StatelessWidget {
   final Uint8List? profileAvatarBytes;
   final bool showCloseButton;
   final VoidCallback? onClose;
-  final bool compact; 
-
+  final bool compact;
 
   const NavigationContent({
     super.key,
@@ -335,7 +343,6 @@ class NavigationContent extends StatelessWidget {
   static const Color textColor = Color(0xFF786E69);
   static const Color textDark = Color(0xFF2C2221);
 
-
   Widget buildNavItem({
     required String title,
     required IconData icon,
@@ -348,7 +355,7 @@ class NavigationContent extends StatelessWidget {
       onTap: () => onItemSelected(index),
       selectedColor: selectedColor,
       textColor: textColor,
-      compact: compact, 
+      compact: compact,
     );
   }
 
@@ -369,8 +376,9 @@ class NavigationContent extends StatelessWidget {
                 vertical: 14,
               ),
               child: Row(
-                mainAxisAlignment:
-                    compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+                mainAxisAlignment: compact
+                    ? MainAxisAlignment.center
+                    : MainAxisAlignment.start,
                 children: [
                   const Icon(
                     Icons.logout_rounded,
@@ -396,7 +404,6 @@ class NavigationContent extends StatelessWidget {
       ),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -427,13 +434,16 @@ class NavigationContent extends StatelessWidget {
                           color: Colors.white,
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: const Color(0xFFC68B59).withValues(alpha: 0.35),
+                            color:
+                                const Color(0xFFC68B59).withValues(alpha: 0.35),
                           ),
                         ),
                         child: ClipOval(
                           child: profileAvatarBytes == null
-                              ? Image.asset('assets/images/santiago_logo.jpg', fit: BoxFit.cover)
-                              : Image.memory(profileAvatarBytes!, fit: BoxFit.cover),
+                              ? Image.asset('assets/images/santiago_logo.jpg',
+                                  fit: BoxFit.cover)
+                              : Image.memory(profileAvatarBytes!,
+                                  fit: BoxFit.cover),
                         ),
                       ),
                       if (!compact) ...const [
@@ -454,7 +464,8 @@ class NavigationContent extends StatelessWidget {
                   child: LayoutBuilder(
                     builder: (context, constraints) => SingleChildScrollView(
                       child: ConstrainedBox(
-                        constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                        constraints:
+                            BoxConstraints(minHeight: constraints.maxHeight),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
@@ -512,9 +523,7 @@ class NavigationContent extends StatelessWidget {
       ),
     );
   }
-
 }
-
 
 class _HoverableNavItem extends StatefulWidget {
   final String title;
@@ -523,7 +532,7 @@ class _HoverableNavItem extends StatefulWidget {
   final VoidCallback onTap;
   final Color selectedColor;
   final Color textColor;
-  final bool compact; 
+  final bool compact;
 
   const _HoverableNavItem({
     required this.title,
@@ -576,8 +585,9 @@ class _HoverableNavItemState extends State<_HoverableNavItem> {
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Row(
-                  mainAxisAlignment:
-                      compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+                  mainAxisAlignment: compact
+                      ? MainAxisAlignment.center
+                      : MainAxisAlignment.start,
                   children: [
                     AnimatedScale(
                       scale: _isHovered && !selected ? 1.06 : 1,
@@ -597,7 +607,8 @@ class _HoverableNavItemState extends State<_HoverableNavItem> {
                           style: TextStyle(
                             fontSize: 16,
                             color: selected ? Colors.white : widget.textColor,
-                            fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                            fontWeight:
+                                selected ? FontWeight.w700 : FontWeight.w400,
                           ),
                         ),
                       ),
