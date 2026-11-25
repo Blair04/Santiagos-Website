@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,7 +24,7 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
   int _selectedIndex = 0;
   int? _highlightFurnitureId;
   int _highlightStock = 0;
-  String? _highlightReceiptId; // NEW: receipt to open in Manage Receipt
+  String? _highlightReceiptId; 
   bool _isDrawerOpen = false;
   Uint8List? _profileAvatarBytes;
 
@@ -69,8 +70,6 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
       );
     }
   }
-
-// Logout confirmation dialog
 
   Future<void> _confirmLogout() async {
     final shouldLogout = await showDialog<bool>(
@@ -154,13 +153,11 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
     }
   }
 
-  /// Called by the sidebar / drawer. Clears any one-time "open this item"
-  /// requests so they don't re-trigger when the user comes back to a tab.
   void _onNavItemSelected(int index) {
     setState(() {
       _selectedIndex = index;
       if (index != 2) _highlightFurnitureId = null;
-      if (index != 1) _highlightReceiptId = null; // NEW
+      if (index != 1) _highlightReceiptId = null; 
     });
   }
 
@@ -175,7 +172,7 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
           if (mounted) {
             setState(() {
               _selectedIndex = 1;
-              _highlightReceiptId = null; // "View all" = no specific receipt
+              _highlightReceiptId = null; 
             });
           }
         },
@@ -189,7 +186,7 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
             _highlightStock = stock;
           });
         },
-        // NEW: clicking a row in Recent Transactions opens that receipt
+
         onReceiptSelected: (receiptId) {
           if (!mounted) return;
           setState(() {
@@ -198,7 +195,7 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
           });
         },
       ),
-      // NEW: pass the chosen receipt id; key forces a fresh open per receipt
+
       ManageReceipt(
         key: ValueKey('manage-receipt-${_highlightReceiptId ?? 'none'}'),
         initialReceiptId: _highlightReceiptId,
@@ -214,7 +211,10 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final bool isHugeScreen = constraints.maxWidth >= 1200;
+        final double w = constraints.maxWidth;
+        final bool isDesktop = w >= 1024; 
+        final bool isTablet = w >= 600 && w < 1024; 
+        final bool showSidebar = w >= 600; 
 
         return SessionListener(
           duration: const Duration(minutes: 30),
@@ -224,7 +224,7 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
             onDrawerChanged: (isOpen) {
               if (mounted) setState(() => _isDrawerOpen = isOpen);
             },
-            appBar: isHugeScreen
+            appBar: showSidebar
                 ? null
                 : AppBar(
                     backgroundColor: const Color(0xFFFAF6F2),
@@ -256,9 +256,10 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
                     ),
                   ),
 
-            drawer: isHugeScreen
+            drawer: showSidebar
                 ? null
                 : Drawer(
+                    width: math.min(300.0, w * 0.85), 
                     backgroundColor: NavigationContent.sidebarColor,
                     surfaceTintColor: Colors.transparent,
                     elevation: 0,
@@ -278,7 +279,7 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
 
             body: Row(
               children: [
-                if (isHugeScreen)
+                if (showSidebar)
                   ClipRRect(
                     borderRadius: const BorderRadius.only(
                       topRight: Radius.circular(30),
@@ -286,13 +287,14 @@ class _MainResponsivePageState extends State<MainResponsivePage> {
                     ),
 
                     child: SizedBox(
-                      width: 250,
+                      width: isDesktop ? 250 : 88, 
                       child: NavigationContent(
                         selectedIndex: _selectedIndex,
                         onItemSelected: _onNavItemSelected,
 
                         onLogout: _confirmLogout,
                         profileAvatarBytes: _profileAvatarBytes,
+                        compact: isTablet, 
                       ),
                     ),
                   ),
@@ -314,6 +316,7 @@ class NavigationContent extends StatelessWidget {
   final Uint8List? profileAvatarBytes;
   final bool showCloseButton;
   final VoidCallback? onClose;
+  final bool compact; 
 
 
   const NavigationContent({
@@ -324,6 +327,7 @@ class NavigationContent extends StatelessWidget {
     required this.profileAvatarBytes,
     this.showCloseButton = false,
     this.onClose,
+    this.compact = false,
   });
 
   static const Color sidebarColor = Color(0xFFD9C3B3);
@@ -344,38 +348,48 @@ class NavigationContent extends StatelessWidget {
       onTap: () => onItemSelected(index),
       selectedColor: selectedColor,
       textColor: textColor,
+      compact: compact, 
     );
   }
 
   Widget buildLogoutButton() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
+      child: Tooltip(
+        message: compact ? 'Logout' : '',
+        child: Material(
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(18),
-          onTap: onLogout,
-          child: const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.logout_rounded,
-                  size: 28,
-                  color: Colors.redAccent,
-                ),
-
-                SizedBox(width: 16),
-                Text(
-                  'Logout',
-                  style: TextStyle(
-                    fontSize: 16,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: onLogout,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 0 : 16,
+                vertical: 14,
+              ),
+              child: Row(
+                mainAxisAlignment:
+                    compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.logout_rounded,
+                    size: 28,
                     color: Colors.redAccent,
-                    fontWeight: FontWeight.w500,
                   ),
-                ),
-              ],
+                  if (!compact) ...const [
+                    SizedBox(width: 16),
+                    Text(
+                      'Logout',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.redAccent,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
         ),
@@ -386,6 +400,9 @@ class NavigationContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double screenH = MediaQuery.of(context).size.height;
+    final double avatarSize = compact ? 56 : (screenH < 600 ? 80 : 130);
+
     return Container(
       color: sidebarColor,
       child: Stack(
@@ -394,12 +411,17 @@ class NavigationContent extends StatelessWidget {
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+                  padding: EdgeInsets.fromLTRB(
+                    compact ? 8 : 16,
+                    20,
+                    compact ? 8 : 16,
+                    compact ? 12 : 20,
+                  ),
                   child: Column(
                     children: [
                       Container(
-                        width: 130,
-                        height: 130,
+                        width: avatarSize,
+                        height: avatarSize,
                         padding: const EdgeInsets.all(3),
                         decoration: BoxDecoration(
                           color: Colors.white,
@@ -414,15 +436,17 @@ class NavigationContent extends StatelessWidget {
                               : Image.memory(profileAvatarBytes!, fit: BoxFit.cover),
                         ),
                       ),
-                      const SizedBox(height: 14),
-                      const Text(
-                        'Manager',
-                        style: TextStyle(
-                          color: textDark,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
+                      if (!compact) ...const [
+                        SizedBox(height: 14),
+                        Text(
+                          'Manager',
+                          style: TextStyle(
+                            color: textDark,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -499,6 +523,7 @@ class _HoverableNavItem extends StatefulWidget {
   final VoidCallback onTap;
   final Color selectedColor;
   final Color textColor;
+  final bool compact; 
 
   const _HoverableNavItem({
     required this.title,
@@ -507,6 +532,7 @@ class _HoverableNavItem extends StatefulWidget {
     required this.onTap,
     required this.selectedColor,
     required this.textColor,
+    this.compact = false,
   });
 
   @override
@@ -519,62 +545,74 @@ class _HoverableNavItemState extends State<_HoverableNavItem> {
   @override
   Widget build(BuildContext context) {
     final selected = widget.isSelected;
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-        child: Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(18),
-          child: InkWell(
+    final compact = widget.compact;
+
+    return Tooltip(
+      message: compact ? widget.title : '',
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+          child: Material(
+            color: Colors.transparent,
             borderRadius: BorderRadius.circular(18),
-            onTap: widget.onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-              decoration: BoxDecoration(
-                color: selected
-                    ? widget.selectedColor
-                    : _isHovered
-                        ? widget.selectedColor.withValues(alpha: 0.14)
-                        : Colors.transparent,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Row(
-                children: [
-                  AnimatedScale(
-                    scale: _isHovered && !selected ? 1.06 : 1,
-                    duration: const Duration(milliseconds: 220),
-                    curve: Curves.easeOutCubic,
-                    child: Icon(
-                      widget.icon,
-                      size: 28,
-                      color: selected ? Colors.white : widget.textColor,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      widget.title,
-                      style: TextStyle(
-                        fontSize: 16,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: widget.onTap,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                padding: EdgeInsets.symmetric(
+                  horizontal: compact ? 0 : 16,
+                  vertical: 13,
+                ),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? widget.selectedColor
+                      : _isHovered
+                          ? widget.selectedColor.withValues(alpha: 0.14)
+                          : Colors.transparent,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  mainAxisAlignment:
+                      compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+                  children: [
+                    AnimatedScale(
+                      scale: _isHovered && !selected ? 1.06 : 1,
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      child: Icon(
+                        widget.icon,
+                        size: 28,
                         color: selected ? Colors.white : widget.textColor,
-                        fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
                       ),
                     ),
-                  ),
-                  AnimatedOpacity(
-                    opacity: _isHovered && !selected ? 1 : 0,
-                    duration: const Duration(milliseconds: 180),
-                    child: Icon(
-                      Icons.chevron_right_rounded,
-                      size: 20,
-                      color: widget.textColor,
-                    ),
-                  ),
-                ],
+                    if (!compact) ...[
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          widget.title,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: selected ? Colors.white : widget.textColor,
+                            fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                      AnimatedOpacity(
+                        opacity: _isHovered && !selected ? 1 : 0,
+                        duration: const Duration(milliseconds: 180),
+                        child: Icon(
+                          Icons.chevron_right_rounded,
+                          size: 20,
+                          color: widget.textColor,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           ),
