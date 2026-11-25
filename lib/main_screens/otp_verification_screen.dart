@@ -6,12 +6,10 @@ import 'new_password_screen.dart';
 
 enum OtpPurpose { signup, recovery }
 
-/// Shared screen for entering the 6-digit code Supabase emails out for
-/// either a new signup confirmation or a password recovery request.
 class OtpVerificationScreen extends StatefulWidget {
   final String email;
   final OtpPurpose purpose;
-  final String? fullName; // only used for signup, to save into `managers`
+  final String? fullName;
 
   const OtpVerificationScreen({
     super.key,
@@ -72,8 +70,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       }
 
       if (widget.purpose == OtpPurpose.signup) {
-        // Record the manager in our own table and flip the app_state flag
-        // so the register screen/link disappears from now on.
         final userId = response.user!.id;
         await _supabase.from('managers').insert({
           'id': userId,
@@ -90,7 +86,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
           (route) => false,
         );
       } else {
-        // Recovery: user now has a valid session, let them set a new password.
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
@@ -145,82 +140,132 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Color(0xFF5C4635)),
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Container(
-            width: 340,
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
-            decoration: BoxDecoration(
-              color: const Color(0xFFD8C9BC),
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 20, spreadRadius: 2, offset: const Offset(0, 8)),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Icon(Icons.mark_email_read_outlined, size: 44, color: Color(0xFF5C4635)),
-                const SizedBox(height: 12),
-                const Text(
-                  'Enter Verification Code',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF4B3525)),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final bool isWeb = width >= 1024;
+            final bool isTablet = width >= 600 && width < 1024;
+
+            final double cardMaxWidth = isWeb ? 460 : (isTablet ? 420 : 360);
+            final double outerPadding = isWeb ? 32 : (isTablet ? 28 : 16);
+            final double innerHPadding = isWeb ? 32 : (isTablet ? 28 : 22);
+            final double innerVPadding = isWeb ? 36 : (isTablet ? 32 : 24);
+            final double iconSize = isWeb ? 60 : (isTablet ? 54 : 44);
+            final double titleSize = isWeb ? 22 : (isTablet ? 20 : 17);
+            final double subtitleSize = isWeb ? 14 : (isTablet ? 13.5 : 12);
+            final double codeSize = isWeb ? 28 : (isTablet ? 26 : 22);
+            final double codeSpacing = isWeb ? 10 : (isTablet ? 9 : 8);
+            final double fieldVPadding = isWeb ? 18 : 14;
+            final double buttonHeight = isWeb ? 52 : (isTablet ? 50 : 46);
+            final double buttonTextSize = isWeb ? 17 : (isTablet ? 16 : 15);
+            final double resendSize = isWeb ? 14 : (isTablet ? 13 : 12);
+            final double radius = isWeb ? 22 : 18;
+
+            return SingleChildScrollView(
+              padding: EdgeInsets.all(outerPadding),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - (outerPadding * 2),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  'We sent a 6-digit code to ${widget.email}',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 12, color: Colors.black54),
-                ),
-                const SizedBox(height: 22),
-                TextFormField(
-                  controller: _codeController,
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 22, letterSpacing: 8, fontWeight: FontWeight.bold),
-                  decoration: InputDecoration(
-                    counterText: '',
-                    filled: true,
-                    fillColor: Colors.white,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.black.withOpacity(0.25))),
-                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.black87, width: 1.3)),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  height: 46,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _handleVerify,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE4CFB3),
-                      foregroundColor: const Color(0xFF4B3525),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: cardMaxWidth),
+                    child: Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.symmetric(horizontal: innerHPadding, vertical: innerVPadding),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD8C9BC),
+                        borderRadius: BorderRadius.circular(radius),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 20, spreadRadius: 2, offset: const Offset(0, 8)),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Icon(Icons.mark_email_read_outlined, size: iconSize, color: const Color(0xFF5C4635)),
+                          SizedBox(height: isWeb ? 16 : 12),
+                          Text(
+                            'Enter Verification Code',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: titleSize, fontWeight: FontWeight.bold, color: const Color(0xFF4B3525)),
+                          ),
+                          SizedBox(height: isWeb ? 10 : 6),
+                          Text(
+                            'We sent a 6-digit code to ${widget.email}',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: subtitleSize, color: Colors.black54),
+                          ),
+                          SizedBox(height: isWeb ? 28 : 22),
+                          TextFormField(
+                            controller: _codeController,
+                            keyboardType: TextInputType.number,
+                            textInputAction: TextInputAction.done,
+                            maxLength: 6,
+                            textAlign: TextAlign.center,
+                            onFieldSubmitted: (_) {
+                              if (!_isLoading) _handleVerify();
+                            },
+                            style: TextStyle(fontSize: codeSize, letterSpacing: codeSpacing, fontWeight: FontWeight.bold),
+                            decoration: InputDecoration(
+                              counterText: '',
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: EdgeInsets.symmetric(vertical: fieldVPadding),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: Colors.black.withOpacity(0.25)),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Colors.black87, width: 1.3),
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: isWeb ? 24 : 18),
+                          SizedBox(
+                            width: double.infinity,
+                            height: buttonHeight,
+                            child: ElevatedButton(
+                              onPressed: _isLoading ? null : _handleVerify,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFE4CFB3),
+                                foregroundColor: const Color(0xFF4B3525),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4B3525)),
+                                      ),
+                                    )
+                                  : Text('Verify', style: TextStyle(fontSize: buttonTextSize, fontWeight: FontWeight.w600)),
+                            ),
+                          ),
+                          SizedBox(height: isWeb ? 16 : 12),
+                          Center(
+                            child: TextButton(
+                              onPressed: _secondsRemaining == 0 ? _handleResend : null,
+                              child: Text(
+                                _secondsRemaining == 0 ? 'Resend code' : 'Resend code in ${_secondsRemaining}s',
+                                style: TextStyle(fontSize: resendSize, color: const Color(0xFF5C4635), fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    child: _isLoading
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4B3525))))
-                        : const Text('Verify', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Center(
-                  child: TextButton(
-                    onPressed: _secondsRemaining == 0 ? _handleResend : null,
-                    child: Text(
-                      _secondsRemaining == 0 ? 'Resend code' : 'Resend code in ${_secondsRemaining}s',
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF5C4635), fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

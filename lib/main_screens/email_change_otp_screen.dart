@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Two-stage OTP verification for a secure Supabase email change.
-/// Secure Email Change must remain enabled in the Supabase Email provider.
 class EmailChangeOtpScreen extends StatefulWidget {
   final String oldEmail;
   final String newEmail;
@@ -39,6 +37,20 @@ class _EmailChangeOtpScreenState extends State<EmailChangeOtpScreen> {
   String? _completionMessage;
 
   String get _targetEmail => _step == 0 ? widget.oldEmail : widget.newEmail;
+
+  double get _screenWidth => MediaQuery.of(context).size.width;
+  bool get _isTablet => _screenWidth >= 600;
+  bool get _isDesktop => _screenWidth >= 1024;
+
+  double get _pagePadding => _isDesktop ? 32 : (_isTablet ? 22 : 14);
+  double get _cardPadding => _isDesktop ? 32 : (_isTablet ? 28 : 18);
+  double get _cardMaxWidth => _isDesktop ? 520 : (_isTablet ? 480 : 460);
+  double get _titleSize => _isDesktop ? 24 : (_isTablet ? 22 : 19);
+  double get _heroIconSize => _isTablet ? 48 : 40;
+  double get _bodySize => _isTablet ? 13 : 12;
+  double get _buttonHeight => _isTablet ? 50 : 46;
+  double get _codeFontSize => _isDesktop ? 28 : (_isTablet ? 25 : 22);
+  double get _codeSpacing => _isDesktop ? 10 : (_isTablet ? 9 : 6);
 
   @override
   void initState() {
@@ -79,8 +91,6 @@ class _EmailChangeOtpScreenState extends State<EmailChangeOtpScreen> {
       );
 
       if (_step == 0) {
-        // With Secure Email Change enabled, Supabase accepts the first OTP
-        // as an intermediate verification. The second OTP completes the change.
         _codeController.clear();
         setState(() => _step = 1);
         _startResendTimer();
@@ -93,8 +103,6 @@ class _EmailChangeOtpScreenState extends State<EmailChangeOtpScreen> {
         return;
       }
 
-      // Supabase Auth is the source of truth. Mirror the new email to the
-      // manager profile only after both OTPs have been accepted.
       var profileSynced = true;
       try {
         await _supabase
@@ -125,7 +133,6 @@ class _EmailChangeOtpScreenState extends State<EmailChangeOtpScreen> {
     if (_secondsRemaining > 0 || _isResending) return;
     setState(() => _isResending = true);
     try {
-      // Supabase resends the pending email-change verification email(s).
       await _supabase.auth.resend(
         type: OtpType.emailChange,
         email: widget.newEmail,
@@ -167,23 +174,25 @@ class _EmailChangeOtpScreenState extends State<EmailChangeOtpScreen> {
         backgroundColor: _background,
         elevation: 0,
         iconTheme: const IconThemeData(color: _darkBrown),
-        title: const Text('Change Email Address', style: TextStyle(color: _ink, fontWeight: FontWeight.w700, fontSize: 18)),
+        title: Text('Change Email Address', style: TextStyle(color: _ink, fontWeight: FontWeight.w700, fontSize: _isTablet ? 18 : 16)),
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(22),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(28),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFE7DED5)),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 22, offset: const Offset(0, 8))],
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(_pagePadding),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: _cardMaxWidth),
+              child: Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(_cardPadding),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(_isTablet ? 18 : 16),
+                  border: Border.all(color: const Color(0xFFE7DED5)),
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 22, offset: const Offset(0, 8))],
+                ),
+                child: _isComplete ? _buildSuccess() : _buildVerification(),
               ),
-              child: _isComplete ? _buildSuccess() : _buildVerification(),
             ),
           ),
         ),
@@ -200,17 +209,17 @@ class _EmailChangeOtpScreenState extends State<EmailChangeOtpScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             _stepIndicator(1, active: true, complete: false),
-            Container(width: 48, height: 2, color: isOldEmail ? const Color(0xFFE5DCD3) : _sage),
+            Container(width: _isTablet ? 48 : 34, height: 2, color: isOldEmail ? const Color(0xFFE5DCD3) : _sage),
             _stepIndicator(2, active: !isOldEmail, complete: false),
           ],
         ),
-        const SizedBox(height: 26),
-        Icon(isOldEmail ? Icons.mark_email_read_outlined : Icons.verified_user_outlined, size: 48, color: _darkBrown),
+        SizedBox(height: _isTablet ? 26 : 20),
+        Icon(isOldEmail ? Icons.mark_email_read_outlined : Icons.verified_user_outlined, size: _heroIconSize, color: _darkBrown),
         const SizedBox(height: 16),
         Text(
           isOldEmail ? 'Verify Current Email' : 'Verify New Email',
           textAlign: TextAlign.center,
-          style: const TextStyle(color: _ink, fontSize: 22, fontWeight: FontWeight.w800),
+          style: TextStyle(color: _ink, fontSize: _titleSize, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 9),
         Text(
@@ -218,28 +227,29 @@ class _EmailChangeOtpScreenState extends State<EmailChangeOtpScreen> {
               ? 'Enter the 6-digit code sent to your currently registered email address.'
               : 'Your current email is verified. Enter the code sent to your new email address to finish the change.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.5),
+          style: TextStyle(color: Colors.grey.shade700, fontSize: _bodySize, height: 1.5),
         ),
         const SizedBox(height: 12),
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           decoration: BoxDecoration(color: const Color(0xFFF7F3EE), borderRadius: BorderRadius.circular(10)),
-          child: Text(_targetEmail, textAlign: TextAlign.center, style: const TextStyle(color: _darkBrown, fontWeight: FontWeight.w700, fontSize: 13)),
+          child: Text(_targetEmail, textAlign: TextAlign.center, style: TextStyle(color: _darkBrown, fontWeight: FontWeight.w700, fontSize: _bodySize)),
         ),
-        const SizedBox(height: 22),
+        SizedBox(height: _isTablet ? 22 : 18),
         TextField(
           controller: _codeController,
           keyboardType: TextInputType.number,
           maxLength: 6,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: _ink, fontSize: 25, letterSpacing: 9, fontWeight: FontWeight.w800),
+          onSubmitted: (_) => _isVerifying ? null : _verifyCode(),
+          style: TextStyle(color: _ink, fontSize: _codeFontSize, letterSpacing: _codeSpacing, fontWeight: FontWeight.w800),
           decoration: InputDecoration(
             counterText: '',
             hintText: '------',
             filled: true,
             fillColor: const Color(0xFFFAF8F5),
-            contentPadding: const EdgeInsets.symmetric(vertical: 17),
+            contentPadding: EdgeInsets.symmetric(vertical: _isTablet ? 17 : 14),
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: const BorderSide(color: Color(0xFFE0D6CC)),),
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: const BorderSide(color: _darkBrown, width: 1.5)),
           ),
@@ -247,7 +257,7 @@ class _EmailChangeOtpScreenState extends State<EmailChangeOtpScreen> {
         const SizedBox(height: 16),
         SizedBox(
           width: double.infinity,
-          height: 48,
+          height: _buttonHeight,
           child: FilledButton(
             onPressed: _isVerifying ? null : _verifyCode,
             style: FilledButton.styleFrom(backgroundColor: _darkBrown, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11))),
@@ -261,6 +271,7 @@ class _EmailChangeOtpScreenState extends State<EmailChangeOtpScreen> {
           onPressed: _secondsRemaining == 0 && !_isResending ? _resendCodes : null,
           child: Text(
             _isResending ? 'Sending...' : _secondsRemaining == 0 ? 'Resend verification email(s)' : 'Resend available in ${_secondsRemaining}s',
+            textAlign: TextAlign.center,
             style: const TextStyle(color: _darkBrown, fontWeight: FontWeight.w600, fontSize: 12),
           ),
         ),
@@ -272,9 +283,10 @@ class _EmailChangeOtpScreenState extends State<EmailChangeOtpScreen> {
 
   Widget _stepIndicator(int number, {required bool active, required bool complete}) {
     final color = complete || active ? _sage : const Color(0xFFD8CEC4);
+    final double size = _isTablet ? 31 : 28;
     return Container(
-      width: 31,
-      height: 31,
+      width: size,
+      height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       child: Text('$number', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
@@ -285,11 +297,11 @@ class _EmailChangeOtpScreenState extends State<EmailChangeOtpScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.check_circle_rounded, size: 64, color: _sage),
+        Icon(Icons.check_circle_rounded, size: _isTablet ? 64 : 52, color: _sage),
         const SizedBox(height: 18),
-        const Text('Email Successfully Changed', textAlign: TextAlign.center, style: TextStyle(color: _ink, fontSize: 22, fontWeight: FontWeight.w800)),
+        Text('Email Successfully Changed', textAlign: TextAlign.center, style: TextStyle(color: _ink, fontSize: _titleSize, fontWeight: FontWeight.w800)),
         const SizedBox(height: 12),
-        Text(_completionMessage ?? 'Your login email has been updated.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.5)),
+        Text(_completionMessage ?? 'Your login email has been updated.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade700, fontSize: _bodySize, height: 1.5)),
         const SizedBox(height: 16),
         Container(
           width: double.infinity,
@@ -303,10 +315,10 @@ class _EmailChangeOtpScreenState extends State<EmailChangeOtpScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 22),
+        SizedBox(height: _isTablet ? 22 : 18),
         SizedBox(
           width: double.infinity,
-          height: 48,
+          height: _buttonHeight,
           child: FilledButton(
             onPressed: () => Navigator.of(context).pop(),
             style: FilledButton.styleFrom(backgroundColor: _darkBrown, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11))),

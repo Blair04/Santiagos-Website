@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Shown after the recovery code is verified (the user now has a session).
-/// Saves the new password in Supabase Auth AND in the `managers` table.
 class NewPasswordScreen extends StatefulWidget {
   const NewPasswordScreen({super.key});
 
@@ -59,10 +57,8 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Change the password in Supabase Auth.
       await _supabase.auth.updateUser(UserAttributes(password: password));
 
-      // 2. Copy the new password into the managers table.
       var mirrored = true;
       try {
         final updated = await _supabase
@@ -75,7 +71,6 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
         mirrored = false;
       }
 
-      // 3. Sign out so the manager logs in again with the new password.
       await _supabase.auth.signOut();
 
       if (!mounted) return;
@@ -113,15 +108,14 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
     super.dispose();
   }
 
-  InputDecoration _decoration(String hint, {Widget? suffix}) {
+  InputDecoration _decoration(String hint, double hintSize, double vPadding, {Widget? suffix}) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+      hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: hintSize),
       suffixIcon: suffix,
       filled: true,
       fillColor: Colors.white,
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: vPadding),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: BorderSide(color: Colors.black.withOpacity(0.25)),
@@ -142,115 +136,151 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
         elevation: 0,
         automaticallyImplyLeading: false,
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Container(
-            width: 340,
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
-            decoration: BoxDecoration(
-              color: _background,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
-                  blurRadius: 20,
-                  spreadRadius: 2,
-                  offset: const Offset(0, 8),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final bool isWeb = width >= 1024;
+            final bool isTablet = width >= 600 && width < 1024;
+
+            final double cardMaxWidth = isWeb ? 460 : (isTablet ? 420 : 360);
+            final double outerPadding = isWeb ? 32 : (isTablet ? 28 : 16);
+            final double innerHPadding = isWeb ? 32 : (isTablet ? 28 : 22);
+            final double innerVPadding = isWeb ? 36 : (isTablet ? 32 : 24);
+            final double iconSize = isWeb ? 60 : (isTablet ? 54 : 44);
+            final double titleSize = isWeb ? 22 : (isTablet ? 20 : 17);
+            final double subtitleSize = isWeb ? 14 : (isTablet ? 13.5 : 12);
+            final double inputSize = isWeb ? 16 : (isTablet ? 15 : 14);
+            final double hintSize = isWeb ? 15 : (isTablet ? 14 : 13);
+            final double helperSize = isWeb ? 13 : (isTablet ? 12 : 11);
+            final double fieldVPadding = isWeb ? 18 : 14;
+            final double buttonHeight = isWeb ? 52 : (isTablet ? 50 : 46);
+            final double buttonTextSize = isWeb ? 17 : (isTablet ? 16 : 15);
+            final double radius = isWeb ? 22 : 18;
+
+            return SingleChildScrollView(
+              padding: EdgeInsets.all(outerPadding),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - (outerPadding * 2),
                 ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Icon(Icons.lock_reset, size: 44, color: _labelBrown),
-                const SizedBox(height: 12),
-                const Text(
-                  'Set New Password',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                    color: _darkBrown,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Choose a strong password for your manager account.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: Colors.black54),
-                ),
-                const SizedBox(height: 20),
-                TextFormField(
-                  controller: _passwordController,
-                  obscureText: !_showPasswords,
-                  style: const TextStyle(fontSize: 14),
-                  decoration: _decoration(
-                    'New password',
-                    suffix: IconButton(
-                      icon: Icon(
-                        _showPasswords
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                        size: 20,
-                        color: _labelBrown,
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: cardMaxWidth),
+                    child: Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.symmetric(horizontal: innerHPadding, vertical: innerVPadding),
+                      decoration: BoxDecoration(
+                        color: _background,
+                        borderRadius: BorderRadius.circular(radius),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.15),
+                            blurRadius: 20,
+                            spreadRadius: 2,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
                       ),
-                      onPressed: () =>
-                          setState(() => _showPasswords = !_showPasswords),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                TextFormField(
-                  controller: _confirmController,
-                  obscureText: !_showPasswords,
-                  style: const TextStyle(fontSize: 14),
-                  onFieldSubmitted: (_) {
-                    if (!_isLoading) _handleSave();
-                  },
-                  decoration: _decoration('Confirm new password'),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  '8+ characters, uppercase, lowercase, number and special character.',
-                  style: TextStyle(fontSize: 11, color: Colors.black54),
-                ),
-                const SizedBox(height: 18),
-                SizedBox(
-                  height: 46,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _handleSave,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _accent,
-                      foregroundColor: _darkBrown,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(_darkBrown),
-                            ),
-                          )
-                        : const Text(
-                            'Save Password',
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Icon(Icons.lock_reset, size: iconSize, color: _labelBrown),
+                          SizedBox(height: isWeb ? 16 : 12),
+                          Text(
+                            'Set New Password',
+                            textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
+                              fontSize: titleSize,
+                              fontWeight: FontWeight.bold,
+                              color: _darkBrown,
                             ),
                           ),
+                          SizedBox(height: isWeb ? 10 : 6),
+                          Text(
+                            'Choose a strong password for your manager account.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: subtitleSize, color: Colors.black54),
+                          ),
+                          SizedBox(height: isWeb ? 28 : 20),
+                          TextFormField(
+                            controller: _passwordController,
+                            obscureText: !_showPasswords,
+                            textInputAction: TextInputAction.next,
+                            style: TextStyle(fontSize: inputSize),
+                            decoration: _decoration(
+                              'New password',
+                              hintSize,
+                              fieldVPadding,
+                              suffix: IconButton(
+                                icon: Icon(
+                                  _showPasswords
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  size: 20,
+                                  color: _labelBrown,
+                                ),
+                                onPressed: () =>
+                                    setState(() => _showPasswords = !_showPasswords),
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: isWeb ? 18 : 14),
+                          TextFormField(
+                            controller: _confirmController,
+                            obscureText: !_showPasswords,
+                            textInputAction: TextInputAction.done,
+                            style: TextStyle(fontSize: inputSize),
+                            onFieldSubmitted: (_) {
+                              if (!_isLoading) _handleSave();
+                            },
+                            decoration: _decoration('Confirm new password', hintSize, fieldVPadding),
+                          ),
+                          SizedBox(height: isWeb ? 8 : 6),
+                          Text(
+                            '8+ characters, uppercase, lowercase, number and special character.',
+                            style: TextStyle(fontSize: helperSize, color: Colors.black54),
+                          ),
+                          SizedBox(height: isWeb ? 24 : 18),
+                          SizedBox(
+                            height: buttonHeight,
+                            child: ElevatedButton(
+                              onPressed: _isLoading ? null : _handleSave,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _accent,
+                                foregroundColor: _darkBrown,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(_darkBrown),
+                                      ),
+                                    )
+                                  : Text(
+                                      'Save Password',
+                                      style: TextStyle(
+                                        fontSize: buttonTextSize,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
