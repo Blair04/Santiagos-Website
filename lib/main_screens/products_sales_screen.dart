@@ -9,7 +9,7 @@ class ProductsSalesScreen extends StatefulWidget {
 }
 
 class _SalesReport {
-  final List<Map<String, dynamic>> rows; // aggregated per furniture
+  final List<Map<String, dynamic>> rows;
   final int completedOrders;
   _SalesReport(this.rows, this.completedOrders);
 
@@ -24,9 +24,23 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
   static const _sand = Color(0xFFE3D5CA);
   static const _darkBrown = Color(0xFF6D4C41);
 
+  static const double _tableMinWidth = 480;
+
+  final ScrollController _tableScrollController = ScrollController();
+
   bool _isLoading = true;
   _SalesReport? _report;
   Object? _error;
+
+  double get _screenWidth => MediaQuery.of(context).size.width;
+  bool get _isTablet => _screenWidth >= 600;
+  bool get _isDesktop => _screenWidth >= 1024;
+
+  double get _pagePadding => _isDesktop ? 36 : (_isTablet ? 24 : 16);
+  double get _titleSize => _isDesktop ? 28 : (_isTablet ? 26 : 22);
+  double get _subtitleSize => _isTablet ? 14 : 13;
+  double get _sectionGap => _isDesktop ? 32 : (_isTablet ? 28 : 20);
+  double get _contentMaxWidth => 1200;
 
   @override
   void initState() {
@@ -34,8 +48,12 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
     _load();
   }
 
-  /// Used for the first load AND every refresh, so both look identical:
-  /// the whole page is replaced by a centered spinner (at least 0.6s).
+  @override
+  void dispose() {
+    _tableScrollController.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
     if (!mounted) return;
     setState(() {
@@ -66,21 +84,18 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
   Future<_SalesReport> _fetchSales() async {
     final db = Supabase.instance.client;
 
-    // 1) completed preorders
     final orders =
         await db.from('PREORDER').select('preorder_id').ilike('status', 'completed');
     final orderIds =
         (orders as List).map((o) => o['preorder_id'] as int).toList();
     if (orderIds.isEmpty) return _SalesReport([], 0);
 
-    // 2) their items (item_name = name saved at the time of the sale)
     final items = await db
         .from('PREORDER_ITEMS')
         .select(
             'furniture_id, variant_id, quantity, item_total_price, item_name')
         .inFilter('preorder_id', orderIds) as List;
 
-    // 3) resolve furniture_id for items that only have a variant_id
     final variantIds = items
         .where((i) => i['furniture_id'] == null && i['variant_id'] != null)
         .map((i) => i['variant_id'] as int)
@@ -110,7 +125,6 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
         .toSet()
         .toList();
 
-    // 4) names (active + archived products) - only used as a fallback
     final Map<int, String> names = {};
     if (furnitureIds.isNotEmpty) {
       final active = await db
@@ -132,17 +146,15 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
       } catch (_) {}
     }
 
-    // 5) aggregate per product
     final Map<String, Map<String, dynamic>> grouped = {};
     for (final item in items) {
       final fid = furnitureIdOf(item);
 
-      // ADDED: name saved on the order item at the time of sale
       final savedName = (item['item_name'] as String?)?.trim();
       final hasSavedName = savedName != null && savedName.isNotEmpty;
 
       final key = hasSavedName
-          ? '${fid ?? 'x'}|$savedName' // old-name sales stay under the old name
+          ? '${fid ?? 'x'}|$savedName'
           : (fid?.toString() ?? 'unknown');
       final row = grouped.putIfAbsent(
         key,
@@ -180,7 +192,6 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
   }
 
   Widget _buildBody() {
-    // Same spinner for the first load and every refresh.
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator(color: _brown));
     }
@@ -209,126 +220,162 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
       onRefresh: _load,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(36),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Expanded(
-                  child: Column(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: _contentMaxWidth),
+            child: Padding(
+              padding: EdgeInsets.all(_pagePadding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("Sales",
-                          style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: _darkBrown)),
-                      SizedBox(height: 4),
-                      Text(
-                        "Track your completed preorder transaction volumes and total revenue streams.",
-                        style: TextStyle(fontSize: 14, color: Colors.grey),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Sales",
+                                style: TextStyle(
+                                    fontSize: _titleSize,
+                                    fontWeight: FontWeight.bold,
+                                    color: _darkBrown)),
+                            const SizedBox(height: 4),
+                            Text(
+                              "Track your completed preorder transaction volumes and total revenue streams.",
+                              style: TextStyle(
+                                  fontSize: _subtitleSize, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(width: _isTablet ? 16 : 8),
+                      Container(
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: IconButton(
+                          onPressed: _load,
+                          tooltip: 'Refresh',
+                          icon: const Icon(Icons.refresh, color: Colors.brown),
+                        ),
                       ),
                     ],
                   ),
-                ),
-                Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 4,
-                        offset: Offset(0, 2),
+                  SizedBox(height: _isTablet ? 24 : 16),
+
+                  LayoutBuilder(builder: (context, c) {
+                    final cards = [
+                      _statCard("Total Gross Income (Completed)",
+                          _peso(report.totalIncome), Icons.payments_rounded,
+                          highlight: true),
+                      _statCard("Units Sold", "${report.totalUnits}",
+                          Icons.inventory_2_rounded),
+                      _statCard("Completed Orders", "${report.completedOrders}",
+                          Icons.check_circle_rounded),
+                    ];
+                    if (c.maxWidth < 700) {
+                      return Column(
+                        children: cards
+                            .map((w) => Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: w))
+                            .toList(),
+                      );
+                    }
+                    return Row(
+                      children: [
+                        Expanded(flex: 2, child: cards[0]),
+                        SizedBox(width: _isDesktop ? 16 : 12),
+                        Expanded(child: cards[1]),
+                        SizedBox(width: _isDesktop ? 16 : 12),
+                        Expanded(child: cards[2]),
+                      ],
+                    );
+                  }),
+                  SizedBox(height: _sectionGap),
+
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.02),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final bool compact = constraints.maxWidth < 700;
+
+                          final Widget table = Table(
+                            columnWidths: const {
+                              0: FlexColumnWidth(3),
+                              1: FlexColumnWidth(1.3),
+                              2: FlexColumnWidth(2),
+                              3: FlexColumnWidth(1.2),
+                            },
+                            children: [
+                              _headerRow([
+                                "Furniture Name",
+                                "Quantity Sold",
+                                "Total Income",
+                                "Share"
+                              ], compact),
+                              ...report.rows.map((r) {
+                                final income = r['income'] as double;
+                                final share = report.totalIncome == 0
+                                    ? 0.0
+                                    : income / report.totalIncome * 100;
+                                return _dataRow([
+                                  r['furniture_name'].toString(),
+                                  "${r['quantity']} unit/s",
+                                  _peso(income),
+                                  "${share.toStringAsFixed(1)}%",
+                                ], compact);
+                              }),
+                            ],
+                          );
+
+                          if (constraints.maxWidth >= _tableMinWidth) {
+                            return table;
+                          }
+
+                          return Scrollbar(
+                            controller: _tableScrollController,
+                            thumbVisibility: true,
+                            trackVisibility: true,
+                            child: SingleChildScrollView(
+                              controller: _tableScrollController,
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: SizedBox(
+                                width: _tableMinWidth,
+                                child: table,
+                              ),
+                            ),
+                          );
+                        },
                       ),
-                    ],
-                  ),
-                  child: IconButton(
-                    onPressed: _load,
-                    tooltip: 'Refresh',
-                    icon: const Icon(Icons.refresh, color: Colors.brown),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // Summary cards
-            LayoutBuilder(builder: (context, c) {
-              final cards = [
-                _statCard("Total Gross Income (Completed)",
-                    _peso(report.totalIncome), Icons.payments_rounded,
-                    highlight: true),
-                _statCard("Units Sold", "${report.totalUnits}",
-                    Icons.inventory_2_rounded),
-                _statCard("Completed Orders", "${report.completedOrders}",
-                    Icons.check_circle_rounded),
-              ];
-              if (c.maxWidth < 700) {
-                return Column(
-                  children: cards
-                      .map((w) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: w))
-                      .toList(),
-                );
-              }
-              return Row(
-                children: [
-                  Expanded(flex: 2, child: cards[0]),
-                  const SizedBox(width: 16),
-                  Expanded(child: cards[1]),
-                  const SizedBox(width: 16),
-                  Expanded(child: cards[2]),
-                ],
-              );
-            }),
-            const SizedBox(height: 32),
-
-            // Table
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.02),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+                    ),
                   ),
                 ],
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Table(
-                  columnWidths: const {
-                    0: FlexColumnWidth(3),
-                    1: FlexColumnWidth(1.3),
-                    2: FlexColumnWidth(2),
-                    3: FlexColumnWidth(1.2),
-                  },
-                  children: [
-                    _headerRow(["Furniture Name", "Quantity Sold",
-                        "Total Income", "Share"]),
-                    ...report.rows.map((r) {
-                      final income = r['income'] as double;
-                      final share = report.totalIncome == 0
-                          ? 0.0
-                          : income / report.totalIncome * 100;
-                      return _dataRow([
-                        r['furniture_name'].toString(),
-                        "${r['quantity']} unit/s",
-                        _peso(income),
-                        "${share.toStringAsFixed(1)}%",
-                      ]);
-                    }),
-                  ],
-                ),
-              ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -336,9 +383,14 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
 
   Widget _statCard(String label, String value, IconData icon,
       {bool highlight = false}) {
+    final double cardPadding = _isDesktop ? 24 : (_isTablet ? 20 : 16);
+    final double valueSize = highlight
+        ? (_isDesktop ? 32 : (_isTablet ? 28 : 24))
+        : (_isDesktop ? 26 : (_isTablet ? 24 : 22));
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(cardPadding),
       decoration: BoxDecoration(
         color: highlight ? _sand : Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -354,22 +406,22 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: EdgeInsets.all(_isTablet ? 10 : 8),
             decoration: BoxDecoration(
               color: highlight ? Colors.white.withOpacity(0.6) : _sand.withOpacity(0.5),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: _muted, size: 22),
+            child: Icon(icon, color: _muted, size: _isTablet ? 22 : 20),
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: _isTablet ? 16 : 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label,
-                    style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF5C4E4B),
+                    style: TextStyle(
+                        fontSize: _isTablet ? 13 : 12,
+                        color: const Color(0xFF5C4E4B),
                         fontWeight: FontWeight.w500)),
                 const SizedBox(height: 4),
                 FittedBox(
@@ -377,7 +429,7 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
                   alignment: Alignment.centerLeft,
                   child: Text(value,
                       style: TextStyle(
-                          fontSize: highlight ? 32 : 26,
+                          fontSize: valueSize,
                           fontWeight: FontWeight.bold,
                           color: _brown)),
                 ),
@@ -397,53 +449,62 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
   }) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: _sand.withOpacity(0.4),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 64, color: isError ? Colors.red : _muted),
+        padding: EdgeInsets.symmetric(horizontal: _isTablet ? 32 : 20),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: EdgeInsets.all(_isTablet ? 24 : 18),
+                  decoration: BoxDecoration(
+                    color: _sand.withOpacity(0.4),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon,
+                      size: _isTablet ? 64 : 48,
+                      color: isError ? Colors.red : _muted),
+                ),
+                const SizedBox(height: 24),
+                Text(title,
+                    style: TextStyle(
+                        fontSize: _isTablet ? 20 : 18,
+                        fontWeight: FontWeight.bold,
+                        color: _brown),
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 10),
+                Text(body,
+                    style: TextStyle(
+                        fontSize: 14,
+                        color: isError ? Colors.red : Colors.grey,
+                        height: 1.4),
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 32),
+                TextButton.icon(
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+                  label: const Text("Check for Updates",
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          color: Colors.white)),
+                  style: TextButton.styleFrom(
+                    backgroundColor: _brown,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 24),
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.bold, color: _brown),
-                textAlign: TextAlign.center),
-            const SizedBox(height: 10),
-            Text(body,
-                style: TextStyle(
-                    fontSize: 14,
-                    color: isError ? Colors.red : Colors.grey,
-                    height: 1.4),
-                textAlign: TextAlign.center),
-            const SizedBox(height: 32),
-            TextButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
-              label: const Text("Check for Updates",
-                  style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                      color: Colors.white)),
-              style: TextButton.styleFrom(
-                backgroundColor: _brown,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  TableRow _headerRow(List<String> headers) {
+  TableRow _headerRow(List<String> headers, bool compact) {
     return TableRow(
       decoration: const BoxDecoration(
         color: Color(0xFFFAFAFA),
@@ -451,17 +512,21 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
       ),
       children: headers
           .map((h) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                padding: EdgeInsets.symmetric(
+                    vertical: compact ? 12 : 16, horizontal: compact ? 12 : 24),
                 child: Text(h,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, color: _muted, fontSize: 14)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _muted,
+                        fontSize: compact ? 12 : 14)),
               ))
           .toList(),
     );
   }
 
-  TableRow _dataRow(List<String> d) {
-    const pad = EdgeInsets.symmetric(vertical: 18, horizontal: 24);
+  TableRow _dataRow(List<String> d, bool compact) {
+    final pad = EdgeInsets.symmetric(
+        vertical: compact ? 14 : 18, horizontal: compact ? 12 : 24);
     return TableRow(
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: Color(0xFFF5F5F5))),
@@ -470,23 +535,27 @@ class _ProductsSalesScreenState extends State<ProductsSalesScreen> {
         Padding(
             padding: pad,
             child: Text(d[0],
-                style: const TextStyle(
-                    fontSize: 15,
+                style: TextStyle(
+                    fontSize: compact ? 13 : 15,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF222222)))),
+                    color: const Color(0xFF222222)))),
         Padding(
             padding: pad,
             child: Text(d[1],
-                style: const TextStyle(fontSize: 14, color: Color(0xFF555555)))),
+                style: TextStyle(
+                    fontSize: compact ? 12 : 14,
+                    color: const Color(0xFF555555)))),
         Padding(
             padding: pad,
             child: Text(d[2],
-                style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.bold, color: _brown))),
+                style: TextStyle(
+                    fontSize: compact ? 13 : 15,
+                    fontWeight: FontWeight.bold,
+                    color: _brown))),
         Padding(
             padding: pad,
             child: Text(d[3],
-                style: const TextStyle(fontSize: 14, color: _muted))),
+                style: TextStyle(fontSize: compact ? 12 : 14, color: _muted))),
       ],
     );
   }

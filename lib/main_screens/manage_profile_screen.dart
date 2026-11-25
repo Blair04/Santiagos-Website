@@ -9,16 +9,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'email_change_otp_screen.dart';
 
-/// Lets the signed-in manager update the business logo and login credentials
-/// through Supabase Auth. Email changes are mirrored into `managers` only
-/// after Supabase confirms both email-change OTPs. Password changes require
-/// the current password plus a reauthentication code emailed by Supabase.
-///
-/// After a successful password change, the new password is also saved in the
-/// `managers` table (`password` column).
-///
-/// Required SQL (run once in the Supabase SQL editor):
-///   alter table managers add column if not exists password text;
+double _dialogWidth(BuildContext context) =>
+    (MediaQuery.of(context).size.width - 80).clamp(240.0, 420.0).toDouble();
+
+EdgeInsets _dialogInset(BuildContext context) => EdgeInsets.symmetric(
+      horizontal: MediaQuery.of(context).size.width >= 600 ? 40 : 16,
+      vertical: 24,
+    );
+
 class ManageProfileScreen extends StatefulWidget {
   final VoidCallback? onProfileUpdated;
 
@@ -37,8 +35,6 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   static const Color _mutedRed = Color(0xFFD9534F);
   static const String _localAvatarKey = 'santiagoBusinessLogoBase64';
 
-  // Change this if your managers table links to auth.users with another column
-  // (for example 'user_id').
   static const String _managersKeyColumn = 'id';
 
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -49,7 +45,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
 
   Uint8List? _avatarBytes;
   String? _remoteAvatarUrl;
-  bool _isInitialLoading = true; // shows the spinner until the page is ready
+  bool _isInitialLoading = true;
   bool _isUploadingAvatar = false;
   bool _isUpdatingEmail = false;
   bool _isUpdatingPassword = false;
@@ -57,7 +53,10 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
 
   User? get _currentUser => _supabase.auth.currentUser;
 
-  // A strong password must satisfy every rule below.
+  double get _screenWidth => MediaQuery.of(context).size.width;
+  bool get _isTablet => _screenWidth >= 600;
+  bool get _isDesktop => _screenWidth >= 1024;
+
   bool get _hasMinPasswordLength => _passwordController.text.length >= 8;
   bool get _hasUppercase => RegExp(r'[A-Z]').hasMatch(_passwordController.text);
   bool get _hasLowercase => RegExp(r'[a-z]').hasMatch(_passwordController.text);
@@ -90,14 +89,10 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
     _initializeScreen();
   }
 
-  /// Loads everything the page needs before it is shown, so the manager sees
-  /// a loading spinner first (like the Sales page) instead of a half-built page.
   Future<void> _initializeScreen() async {
     try {
       await _loadLocalAvatar();
-    } catch (_) {
-      // Fall through: the page still opens with the default logo.
-    }
+    } catch (_) {}
     if (mounted) setState(() => _isInitialLoading = false);
   }
 
@@ -116,10 +111,6 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
     }
   }
 
-  /// Mirrors the new password into `managers`, but only after Supabase Auth
-  /// proves it now holds that password (a fresh sign-in with it succeeds).
-  /// Same principle as the email change: Auth confirms first, then `managers`
-  /// follows. Returns null on success or an error message.
   Future<String?> _syncPasswordToManagers({
     required String userId,
     required String email,
@@ -150,8 +141,6 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
     }
   }
 
-  /// Saves the selected photo locally first, then attempts to synchronize it
-  /// with an existing `avatars` bucket.
   Future<void> _pickAndUploadAvatar() async {
     final image = await _imagePicker.pickImage(
       source: ImageSource.gallery,
@@ -202,9 +191,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
         );
         _remoteAvatarUrl = publicUrl;
         synchronized = true;
-      } catch (_) {
-        // No avatars bucket / policy: the local copy remains available.
-      }
+      } catch (_) {}
     }
 
     if (!mounted) return;
@@ -233,41 +220,44 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
       barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          insetPadding: _dialogInset(context),
           backgroundColor: _background,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           title: const Text('Change Email Address', style: TextStyle(color: _ink, fontWeight: FontWeight.bold)),
           content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Current email: ${user.email}', style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
-                const SizedBox(height: 18),
-                const Text('New email address', style: TextStyle(color: _ink, fontWeight: FontWeight.w700, fontSize: 12)),
-                const SizedBox(height: 7),
-                TextField(
-                  controller: newEmailController,
-                  keyboardType: TextInputType.emailAddress,
-                  autofillHints: const [AutofillHints.email],
-                  decoration: _inputDecoration(hintText: 'Enter your new email', icon: Icons.mail_outline_rounded),
-                ),
-                const SizedBox(height: 16),
-                const Text('Current password', style: TextStyle(color: _ink, fontWeight: FontWeight.w700, fontSize: 12)),
-                const SizedBox(height: 7),
-                TextField(
-                  controller: currentPasswordController,
-                  obscureText: obscurePassword,
-                  decoration: _inputDecoration(hintText: 'Confirm your current password', icon: Icons.lock_outline_rounded).copyWith(
-                    suffixIcon: IconButton(
-                      onPressed: () => setDialogState(() => obscurePassword = !obscurePassword),
-                      icon: Icon(obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+            width: _dialogWidth(context),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Current email: ${user.email}', style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
+                  const SizedBox(height: 18),
+                  const Text('New email address', style: TextStyle(color: _ink, fontWeight: FontWeight.w700, fontSize: 12)),
+                  const SizedBox(height: 7),
+                  TextField(
+                    controller: newEmailController,
+                    keyboardType: TextInputType.emailAddress,
+                    autofillHints: const [AutofillHints.email],
+                    decoration: _inputDecoration(hintText: 'Enter your new email', icon: Icons.mail_outline_rounded),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Current password', style: TextStyle(color: _ink, fontWeight: FontWeight.w700, fontSize: 12)),
+                  const SizedBox(height: 7),
+                  TextField(
+                    controller: currentPasswordController,
+                    obscureText: obscurePassword,
+                    decoration: _inputDecoration(hintText: 'Confirm your current password', icon: Icons.lock_outline_rounded).copyWith(
+                      suffixIcon: IconButton(
+                        onPressed: () => setDialogState(() => obscurePassword = !obscurePassword),
+                        icon: Icon(obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Text('We will send verification codes to your current and new email addresses.', style: TextStyle(color: Colors.grey.shade700, fontSize: 12, height: 1.4)),
-              ],
+                  const SizedBox(height: 10),
+                  Text('We will send verification codes to your current and new email addresses.', style: TextStyle(color: Colors.grey.shade700, fontSize: 12, height: 1.4)),
+                ],
+              ),
             ),
           ),
           actions: [
@@ -308,7 +298,6 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
 
     setState(() => _isUpdatingEmail = true);
     try {
-      // Re-authenticate with the current credentials before starting a sensitive change.
       final authResponse = await _supabase.auth.signInWithPassword(
         email: user.email!,
         password: currentPassword,
@@ -317,8 +306,6 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
         throw Exception('Unable to verify your account. Please sign in again.');
       }
 
-      // Supabase enforces email uniqueness and sends both OTPs because
-      // Secure email change is enabled in the project's Email provider.
       await _supabase.auth.updateUser(UserAttributes(email: newEmail));
 
       if (!mounted) return;
@@ -341,14 +328,6 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
     }
   }
 
-  /// Password change flow:
-  /// 1. Validate the new password locally.
-  /// 2. Ask for the current password and verify it with Supabase Auth.
-  /// 3. Supabase emails a reauthentication code (`reauthenticate()`).
-  /// 4. The manager enters the code; Supabase validates it as the `nonce`
-  ///    while updating the password. A wrong/expired code is rejected by
-  ///    Supabase and the password stays unchanged.
-  /// 5. Once Auth confirms the new password, it is mirrored into `managers`.
   Future<void> _updatePassword() async {
     final password = _passwordController.text;
     final confirmation = _confirmPasswordController.text;
@@ -372,13 +351,12 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
 
     final email = user.email!;
 
-    // Step 1: ask for the current password.
     final currentPassword = await showDialog<String>(
       context: context,
       barrierDismissible: false,
       builder: (_) => _CurrentPasswordDialog(email: email),
     );
-    if (currentPassword == null) return; // cancelled
+    if (currentPassword == null) return;
     if (currentPassword.isEmpty) {
       _showMessage('Enter your current password to continue.', _mutedRed);
       return;
@@ -393,7 +371,6 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
 
     setState(() => _isUpdatingPassword = true);
     try {
-      // Step 2: verify the current password with Supabase Auth.
       final authResponse = await _supabase.auth.signInWithPassword(
         email: email,
         password: currentPassword,
@@ -402,12 +379,9 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
         throw Exception('Unable to verify your account. Please sign in again.');
       }
 
-      // Step 3: Supabase emails a verification code to the current address.
       await _supabase.auth.reauthenticate();
       if (!mounted) return;
 
-      // Step 4: the manager enters the code; Supabase verifies it while the
-      // password is updated.
       final verified = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
@@ -418,7 +392,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
               await _supabase.auth.updateUser(
                 UserAttributes(password: password, nonce: code),
               );
-              return null; // success
+              return null;
             } on AuthException catch (error) {
               return error.message;
             } catch (_) {
@@ -438,9 +412,8 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
         ),
       );
 
-      if (verified != true) return; // cancelled
+      if (verified != true) return;
 
-      // Step 5: Auth has accepted the new password; now mirror it to managers.
       final syncError = await _syncPasswordToManagers(
         userId: user.id,
         email: email,
@@ -484,9 +457,15 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
     );
   }
 
+  Widget _actionButton(Widget button) {
+    if (_isTablet) {
+      return Align(alignment: Alignment.centerRight, child: button);
+    }
+    return SizedBox(width: double.infinity, child: button);
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Same start-up behavior as the Sales page: a centered spinner first.
     if (_isInitialLoading) {
       return const Scaffold(
         backgroundColor: _background,
@@ -500,23 +479,26 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
       backgroundColor: _background,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final horizontalPadding = constraints.maxWidth < 600
-              ? 18.0
+          final bool phone = constraints.maxWidth < 600;
+          final horizontalPadding = phone
+              ? 16.0
               : constraints.maxWidth < 1000
               ? 24.0
               : 40.0;
           final useColumns = constraints.maxWidth >= 940;
+          final double titleSize = phone ? 22 : (constraints.maxWidth < 1000 ? 26 : 28);
+          final double subtitleSize = phone ? 13 : 15;
 
           return SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
               horizontalPadding,
-              constraints.maxWidth < 600 ? 24 : 40,
+              phone ? 20 : 40,
               horizontalPadding,
-              48,
+              phone ? 32 : 48,
             ),
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1180),
+                constraints: BoxConstraints(maxWidth: useColumns ? 1180 : 720),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -524,7 +506,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
                       'Manage Account',
                       style: TextStyle(
                         color: Colors.brown,
-                        fontSize: 28,
+                        fontSize: titleSize,
                         fontWeight: FontWeight.bold,
                         letterSpacing: -0.5,
                       ),
@@ -534,7 +516,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
                       'Manage your business logo and manager sign-in details.',
                       style: TextStyle(
                         color: Colors.grey.shade600,
-                        fontSize: 15,
+                        fontSize: subtitleSize,
                       ),
                     ),
                     const SizedBox(height: 15),
@@ -544,7 +526,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
                       thickness: 1,
                       height: 1,
                     ),
-                    const SizedBox(height: 25),
+                    SizedBox(height: phone ? 18 : 25),
 
                     if (useColumns)
                       Row(
@@ -582,14 +564,16 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   }
 
   Widget _buildProfileCard() {
+    final double avatarSize = _isTablet ? 150 : 120;
+
     return _buildSectionCard(
       title: 'Business Logo',
       subtitle: 'Company logo • JPG, PNG, or WebP up to 5 MB',
       child: Column(
         children: [
           SizedBox(
-            width: 150,
-            height: 150,
+            width: avatarSize,
+            height: avatarSize,
             child: Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
@@ -610,11 +594,12 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
 
           const SizedBox(height: 20),
 
-          const Text(
+          Text(
             "Santiago's Furniture",
+            textAlign: TextAlign.center,
             style: TextStyle(
               color: _ink,
-              fontSize: 19,
+              fontSize: _isTablet ? 19 : 17,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -691,9 +676,8 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
             ),
           ),
           const SizedBox(height: 18),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.icon(
+          _actionButton(
+            FilledButton.icon(
               onPressed: _isUpdatingEmail ? null : _updateEmail,
               style: _primaryButtonStyle(),
               icon: _isUpdatingEmail ? _buttonProgress() : const Icon(Icons.edit_outlined, size: 18),
@@ -784,9 +768,8 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.icon(
+          _actionButton(
+            FilledButton.icon(
               onPressed: _isUpdatingPassword ||
                       !_isStrongPassword ||
                       !_passwordsMatch
@@ -916,12 +899,14 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
             color: passed ? _sage : Colors.grey.shade400,
           ),
           const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(
-              color: passed ? _sage : Colors.grey.shade600,
-              fontSize: 11,
-              fontWeight: passed ? FontWeight.w600 : FontWeight.w400,
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: passed ? _sage : Colors.grey.shade600,
+                fontSize: 11,
+                fontWeight: passed ? FontWeight.w600 : FontWeight.w400,
+              ),
             ),
           ),
         ],
@@ -936,10 +921,10 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(26),
+      padding: EdgeInsets.all(_isDesktop ? 26 : (_isTablet ? 22 : 16)),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(_isTablet ? 22 : 18),
         border: Border.all(color: _ink.withValues(alpha: 0.04)),
         boxShadow: [
           BoxShadow(
@@ -954,9 +939,9 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               color: _ink,
-              fontSize: 18,
+              fontSize: _isTablet ? 18 : 17,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -965,7 +950,7 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
             subtitle,
             style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
           ),
-          const SizedBox(height: 24),
+          SizedBox(height: _isTablet ? 24 : 18),
           child,
         ],
       ),
@@ -1039,10 +1024,6 @@ class _ManageProfileScreenState extends State<ManageProfileScreen> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Dialog 1: asks for the current password before a password change starts.
-// Owns its own controller so it is disposed safely with the dialog.
-// ---------------------------------------------------------------------------
 class _CurrentPasswordDialog extends StatefulWidget {
   final String email;
 
@@ -1071,6 +1052,7 @@ class _CurrentPasswordDialogState extends State<_CurrentPasswordDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      insetPadding: _dialogInset(context),
       backgroundColor: _background,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       title: const Text(
@@ -1078,71 +1060,73 @@ class _CurrentPasswordDialogState extends State<_CurrentPasswordDialog> {
         style: TextStyle(color: _ink, fontWeight: FontWeight.bold),
       ),
       content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Signed in as ${widget.email}',
-              style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              'Current password',
-              style: TextStyle(
-                color: _ink,
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
+        width: _dialogWidth(context),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Signed in as ${widget.email}',
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
               ),
-            ),
-            const SizedBox(height: 7),
-            TextField(
-              controller: _controller,
-              obscureText: _obscure,
-              autofocus: true,
-              onSubmitted: (_) => _submit(),
-              decoration: InputDecoration(
-                hintText: 'Enter your current password',
-                prefixIcon: const Icon(
-                  Icons.lock_outline_rounded,
-                  color: _darkBrown,
-                  size: 20,
+              const SizedBox(height: 18),
+              const Text(
+                'Current password',
+                style: TextStyle(
+                  color: _ink,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
                 ),
-                suffixIcon: IconButton(
-                  onPressed: () => setState(() => _obscure = !_obscure),
-                  icon: Icon(
-                    _obscure
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
+              ),
+              const SizedBox(height: 7),
+              TextField(
+                controller: _controller,
+                obscureText: _obscure,
+                autofocus: true,
+                onSubmitted: (_) => _submit(),
+                decoration: InputDecoration(
+                  hintText: 'Enter your current password',
+                  prefixIcon: const Icon(
+                    Icons.lock_outline_rounded,
+                    color: _darkBrown,
+                    size: 20,
+                  ),
+                  suffixIcon: IconButton(
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                    icon: Icon(
+                      _obscure
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFFCFAF8),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: _ink.withValues(alpha: 0.08)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: _ink.withValues(alpha: 0.08)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _darkBrown, width: 1.5),
                   ),
                 ),
-                filled: true,
-                fillColor: const Color(0xFFFCFAF8),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: _ink.withValues(alpha: 0.08)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: _ink.withValues(alpha: 0.08)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _darkBrown, width: 1.5),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'After this, we will send a verification code to your email.',
+                style: TextStyle(
+                  color: Colors.grey.shade700,
+                  fontSize: 12,
+                  height: 1.4,
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'After this, we will send a verification code to your email.',
-              style: TextStyle(
-                color: Colors.grey.shade700,
-                fontSize: 12,
-                height: 1.4,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
       actions: [
@@ -1163,12 +1147,6 @@ class _CurrentPasswordDialogState extends State<_CurrentPasswordDialog> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Dialog 2: verification code sent by Supabase (reauthentication nonce).
-// `onConfirm` must return null on success or an error message to display.
-// `onResend` must return null on success or an error message to display.
-// Pops `true` once the password was updated successfully.
-// ---------------------------------------------------------------------------
 class _PasswordOtpDialog extends StatefulWidget {
   final String email;
   final Future<String?> Function(String code) onConfirm;
@@ -1284,8 +1262,10 @@ class _PasswordOtpDialogState extends State<_PasswordOtpDialog> {
   @override
   Widget build(BuildContext context) {
     final canResend = _secondsLeft == 0 && !_isResending && !_isVerifying;
+    final bool narrow = MediaQuery.of(context).size.width < 400;
 
     return AlertDialog(
+      insetPadding: _dialogInset(context),
       backgroundColor: _background,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       title: const Text(
@@ -1293,128 +1273,130 @@ class _PasswordOtpDialogState extends State<_PasswordOtpDialog> {
         style: TextStyle(color: _ink, fontWeight: FontWeight.bold),
       ),
       content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'We sent a verification code to ${widget.email}. '
-              'Enter it below to confirm your new password.',
-              style: TextStyle(
-                color: Colors.grey.shade700,
-                fontSize: 13,
-                height: 1.4,
+        width: _dialogWidth(context),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'We sent a verification code to ${widget.email}. '
+                'Enter it below to confirm your new password.',
+                style: TextStyle(
+                  color: Colors.grey.shade700,
+                  fontSize: 13,
+                  height: 1.4,
+                ),
               ),
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              'Verification code',
-              style: TextStyle(
-                color: _ink,
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
+              const SizedBox(height: 18),
+              const Text(
+                'Verification code',
+                style: TextStyle(
+                  color: _ink,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
               ),
-            ),
-            const SizedBox(height: 7),
-            TextField(
-              controller: _codeController,
-              enabled: !_isVerifying,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              textAlign: TextAlign.center,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(10),
+              const SizedBox(height: 7),
+              TextField(
+                controller: _codeController,
+                enabled: !_isVerifying,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(10),
+                ],
+                style: TextStyle(
+                  color: _ink,
+                  fontSize: narrow ? 18 : 22,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: narrow ? 4 : 6,
+                ),
+                onSubmitted: (_) => _confirm(),
+                decoration: InputDecoration(
+                  hintText: '------',
+                  hintStyle: TextStyle(
+                    color: Colors.grey.shade400,
+                    letterSpacing: narrow ? 4 : 6,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFFCFAF8),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: _ink.withValues(alpha: 0.08)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: _ink.withValues(alpha: 0.08)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _darkBrown, width: 1.5),
+                  ),
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.error_outline, size: 15, color: _mutedRed),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _error!,
+                        style: const TextStyle(
+                          color: _mutedRed,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ],
-              style: const TextStyle(
-                color: _ink,
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 6,
-              ),
-              onSubmitted: (_) => _confirm(),
-              decoration: InputDecoration(
-                hintText: '------',
-                hintStyle: TextStyle(
-                  color: Colors.grey.shade400,
-                  letterSpacing: 6,
-                ),
-                filled: true,
-                fillColor: const Color(0xFFFCFAF8),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: _ink.withValues(alpha: 0.08)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: _ink.withValues(alpha: 0.08)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _darkBrown, width: 1.5),
-                ),
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 10),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.error_outline, size: 15, color: _mutedRed),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      _error!,
-                      style: const TextStyle(
-                        color: _mutedRed,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+              if (_info != null) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Icon(Icons.check_circle, size: 15, color: _sage),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _info!,
+                        style: const TextStyle(
+                          color: _sage,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ],
-            if (_info != null) ...[
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  const Icon(Icons.check_circle, size: 15, color: _sage),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      _info!,
-                      style: const TextStyle(
-                        color: _sage,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: canResend ? _resend : null,
-                style: TextButton.styleFrom(
-                  foregroundColor: _darkBrown,
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(0, 36),
+                  ],
                 ),
-                child: Text(
-                  _isResending
-                      ? 'Sending...'
-                      : _secondsLeft > 0
-                      ? 'Resend code in ${_secondsLeft}s'
-                      : 'Resend code',
+              ],
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: canResend ? _resend : null,
+                  style: TextButton.styleFrom(
+                    foregroundColor: _darkBrown,
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(0, 36),
+                  ),
+                  child: Text(
+                    _isResending
+                        ? 'Sending...'
+                        : _secondsLeft > 0
+                        ? 'Resend code in ${_secondsLeft}s'
+                        : 'Resend code',
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
       actions: [

@@ -16,7 +16,6 @@ class FurnitureCategory {
     return FurnitureCategory(
       id: map['category_id'] as int?,
       name: map['category_name'] as String,
-      // Only show products that are NOT archived
       products: map['FURNITURE'] != null
           ? (map['FURNITURE'] as List)
               .where((p) => p['is_archived'] != true)
@@ -70,6 +69,14 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
   static const _white = Colors.white;
   static const _textMuted = Color(0xFF9E8878);
 
+  double get _screenWidth => MediaQuery.of(context).size.width;
+  bool get _isTablet => _screenWidth >= 600;
+  bool get _isDesktop => _screenWidth >= 1024;
+
+  double get _horizontalPadding => _isDesktop ? 30 : (_isTablet ? 24 : 16);
+  double get _titleSize => _isDesktop ? 26 : (_isTablet ? 24 : 20);
+  double get _contentMaxWidth => 1400;
+
   @override
   void initState() {
     super.initState();
@@ -106,8 +113,6 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
     }
   }
 
-  // Checks if a category name already exists (case-insensitive, ignores
-  // extra spaces). Use excludeId when editing so it doesn't clash with itself.
   bool _categoryExists(String name, {int? excludeId}) {
     final normalized = name.trim().toLowerCase();
 
@@ -225,135 +230,149 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
 
   Widget _buildMain() {
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(30, 24, 30, 18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Manage Categories',
-              style: TextStyle(
-                color: _brown,
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-              ),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: _contentMaxWidth),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              _horizontalPadding,
+              _isTablet ? 24 : 16,
+              _horizontalPadding,
+              _isTablet ? 18 : 12,
             ),
-            const Padding(
-              padding: EdgeInsets.only(top: 14, bottom: 14),
-              child: Divider(height: 1, color: Color(0xFFD9CEC5)),
-            ),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final compact = constraints.maxWidth < 620;
-                final search = SizedBox(
-                  height: 48,
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (v) => setState(() {
-                      _searchQuery = v;
-                      _currentPage = 0;
-                    }),
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.search, color: _brown),
-                      hintText: 'Search Category...',
-                      hintStyle: const TextStyle(color: Color(0xFF82766F)),
-                      filled: true,
-                      fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(28),
-                        borderSide: const BorderSide(color: Color(0xFFE2DAD3)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(28),
-                        borderSide: const BorderSide(color: Color(0xFFE2DAD3)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(28),
-                        borderSide: const BorderSide(color: _brownLight),
-                      ),
-                    ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Manage Categories',
+                  style: TextStyle(
+                    color: _brown,
+                    fontSize: _titleSize,
+                    fontWeight: FontWeight.w700,
                   ),
-                );
-                final addButton = SizedBox(
-                  height: 46,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _showCategoryDialog(),
-                    style: ElevatedButton.styleFrom(
-                      elevation: 0,
-                      backgroundColor: _brown,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    icon: const Icon(Icons.add, size: 19),
-                    label: const Text(
-                      'Add New Category',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                );
-
-                if (compact) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      search,
-                      const SizedBox(height: 10),
-                      Align(alignment: Alignment.centerRight, child: addButton),
-                    ],
-                  );
-                }
-                return Row(
-                  children: [
-                    Expanded(child: search),
-                    const SizedBox(width: 16),
-                    addButton,
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-              decoration: BoxDecoration(
-                color: const Color(0xFFECE3DC),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                '${_filtered.length} ${_filtered.length == 1 ? 'category' : 'categories'}',
-                style: const TextStyle(
-                  color: _brown,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
                 ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Expanded(
-              child: _isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(color: _brown),
-                    )
-                  : _filtered.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No categories found.',
-                            style: TextStyle(color: _brown, fontSize: 16),
+                const Padding(
+                  padding: EdgeInsets.only(top: 14, bottom: 14),
+                  child: Divider(height: 1, color: Color(0xFFD9CEC5)),
+                ),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 620;
+                    final search = SizedBox(
+                      height: 48,
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: (v) => setState(() {
+                          _searchQuery = v;
+                          _currentPage = 0;
+                        }),
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.search, color: _brown),
+                          hintText: 'Search Category...',
+                          hintStyle: const TextStyle(color: Color(0xFF82766F)),
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
                           ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: const BorderSide(color: Color(0xFFE2DAD3)),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: const BorderSide(color: Color(0xFFE2DAD3)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: const BorderSide(color: _brownLight),
+                          ),
+                        ),
+                      ),
+                    );
+                    final addButton = SizedBox(
+                      height: 46,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showCategoryDialog(),
+                        style: ElevatedButton.styleFrom(
+                          elevation: 0,
+                          backgroundColor: _brown,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        icon: const Icon(Icons.add, size: 19),
+                        label: Text(
+                          'Add New Category',
+                          style: TextStyle(
+                            fontSize: _isTablet ? 14 : 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    );
+
+                    if (compact) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          search,
+                          const SizedBox(height: 10),
+                          Align(alignment: Alignment.centerRight, child: addButton),
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        Expanded(child: search),
+                        const SizedBox(width: 16),
+                        addButton,
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECE3DC),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${_filtered.length} ${_filtered.length == 1 ? 'category' : 'categories'}',
+                    style: const TextStyle(
+                      color: _brown,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Expanded(
+                  child: _isLoading
+                      ? const Center(
+                          child: CircularProgressIndicator(color: _brown),
                         )
-                      : _buildCategoryList(),
+                      : _filtered.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No categories found.',
+                                style: TextStyle(color: _brown, fontSize: 16),
+                              ),
+                            )
+                          : _buildCategoryList(),
+                ),
+                if (!_isLoading && _filtered.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _buildPagination(),
+                ],
+              ],
             ),
-            if (!_isLoading && _filtered.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _buildPagination(),
-            ],
-          ],
+          ),
         ),
       ),
     );
@@ -363,15 +382,48 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final columns = width >= 1050 ? 3 : width >= 650 ? 2 : 1;
+        final columns = width >= 1300
+            ? 4
+            : width >= 1050
+                ? 3
+                : width >= 300
+                    ? 2
+                    : 1;
+        final double spacing = _isTablet ? 18 : 12;
+        final double itemWidth = (width - 3 - spacing * (columns - 1)) / columns;
+
+        final double effectiveWidth =
+            _isTablet ? itemWidth : (itemWidth < 239 ? itemWidth : 239);
+
+        final bool tinyCard = effectiveWidth < 180;
+        final bool smallCard = effectiveWidth < 240;
+        final bool mediumCard = effectiveWidth < 320;
+
+        final double nameSize =
+            tinyCard ? 16 : (smallCard ? 20 : (mediumCard ? 24 : 27));
+        final double countSize =
+            tinyCard ? 12 : (smallCard ? 14 : (mediumCard ? 16 : 17));
+        final double circleSize =
+            tinyCard ? 44 : (smallCard ? 56 : (mediumCard ? 64 : 72));
+        final double circleIconSize =
+            tinyCard ? 22 : (smallCard ? 26 : (mediumCard ? 30 : 34));
+        final double actionIconSize = tinyCard ? 19 : (smallCard ? 22 : 25);
+        final double cardHeight =
+            tinyCard ? 172 : (smallCard ? 215 : (mediumCard ? 235 : 255));
+        final double padLeft = tinyCard ? 10 : (smallCard ? 14 : 20);
+        final double padTop = tinyCard ? 10 : (smallCard ? 14 : 20);
+        final double padRight = tinyCard ? 6 : (smallCard ? 10 : 16);
+        final double padBottom = tinyCard ? 6 : (smallCard ? 10 : 14);
+        final double gapAfterCircle = tinyCard ? 8 : (smallCard ? 12 : 18);
+
         return GridView.builder(
           padding: const EdgeInsets.only(bottom: 8, right: 2, left: 2, top: 1),
           itemCount: _pageCategories.length,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
-            crossAxisSpacing: 18,
-            mainAxisSpacing: 18,
-            mainAxisExtent: 255,
+            crossAxisSpacing: spacing,
+            mainAxisSpacing: spacing,
+            mainAxisExtent: cardHeight,
           ),
           itemBuilder: (context, index) {
             final category = _pageCategories[index];
@@ -384,13 +436,18 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
                 borderRadius: BorderRadius.circular(17),
                 onTap: () => _showProductsDialog(category),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 16, 14),
+                  padding: EdgeInsets.fromLTRB(
+                    padLeft,
+                    padTop,
+                    padRight,
+                    padBottom,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
-                        width: 72,
-                        height: 72,
+                        width: circleSize,
+                        height: circleSize,
                         decoration: const BoxDecoration(
                           color: Color(0xFFE9E0D9),
                           shape: BoxShape.circle,
@@ -398,26 +455,26 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
                         child: Icon(
                           _categoryIcon(category.name),
                           color: _brownLight,
-                          size: 34,
+                          size: circleIconSize,
                         ),
                       ),
-                      const SizedBox(height: 18),
+                      SizedBox(height: gapAfterCircle),
                       Text(
                         category.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF2F1B14),
-                          fontSize: 27,
+                        style: TextStyle(
+                          color: const Color(0xFF2F1B14),
+                          fontSize: nameSize,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '${category.products.length} ${category.products.length == 1 ? 'Item' : 'Items'}',
-                        style: const TextStyle(
-                          color: Color(0xFF2F1B14),
-                          fontSize: 17,
+                        style: TextStyle(
+                          color: const Color(0xFF2F1B14),
+                          fontSize: countSize,
                         ),
                       ),
                       const Spacer(),
@@ -428,10 +485,10 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
                             tooltip: 'Edit category',
                             visualDensity: VisualDensity.compact,
                             onPressed: () => _showCategoryDialog(existing: category),
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.edit,
-                              color: Color(0xFF999491),
-                              size: 25,
+                              color: const Color(0xFF999491),
+                              size: actionIconSize,
                             ),
                           ),
                           IconButton(
@@ -441,10 +498,10 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
                               category.id!,
                               category.name,
                             ),
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.delete_outline,
-                              color: Color(0xFF999491),
-                              size: 26,
+                              color: const Color(0xFF999491),
+                              size: actionIconSize + 1,
                             ),
                           ),
                         ],
@@ -491,8 +548,8 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
               borderRadius: BorderRadius.circular(7),
               onTap: () => setState(() => _currentPage = page),
               child: Container(
-                width: 32,
-                height: 34,
+                width: _isTablet ? 34 : 32,
+                height: _isTablet ? 36 : 34,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: page == _currentPage ? _brown : Colors.transparent,
@@ -534,17 +591,24 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
     return Icons.category;
   }
 
+  EdgeInsets get _dialogInset =>
+      EdgeInsets.symmetric(horizontal: _isTablet ? 40 : 16, vertical: 24);
+
+  double _dialogContentWidth(double maxWidth) =>
+      (_screenWidth - 80).clamp(240.0, maxWidth).toDouble();
+
   void _showProductsDialog(FurnitureCategory category) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        insetPadding: _dialogInset,
         backgroundColor: Colors.white,
         title: Text(
           category.name,
           style: const TextStyle(color: _brown, fontWeight: FontWeight.bold),
         ),
         content: SizedBox(
-          width: 420,
+          width: _dialogContentWidth(_isDesktop ? 480 : 420),
           child: category.products.isEmpty
               ? const Text(
                   'No furniture products registered.',
@@ -561,6 +625,7 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
                       contentPadding: EdgeInsets.zero,
                       title: Text(
                         product.name,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(color: _brown),
                       ),
                       trailing: Text(
@@ -596,6 +661,7 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        insetPadding: _dialogInset,
         backgroundColor: _white,
         title: Text(
           existing == null ? 'Add New Category' : 'Edit Category',
@@ -604,26 +670,29 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        content: Form(
-          key: formKey,
-          child: TextFormField(
-            controller: nameCtrl,
-            validator: (v) {
-              if (v == null || v.trim().isEmpty) {
-                return 'Required';
-              }
-              if (_categoryExists(v, excludeId: existing?.id)) {
-                return 'Category already exists';
-              }
-              return null;
-            },
-            decoration: InputDecoration(
-              hintText: 'Category Name',
-              filled: true,
-              fillColor: _bg,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide.none,
+        content: SizedBox(
+          width: _dialogContentWidth(_isDesktop ? 440 : 400),
+          child: Form(
+            key: formKey,
+            child: TextFormField(
+              controller: nameCtrl,
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) {
+                  return 'Required';
+                }
+                if (_categoryExists(v, excludeId: existing?.id)) {
+                  return 'Category already exists';
+                }
+                return null;
+              },
+              decoration: InputDecoration(
+                hintText: 'Category Name',
+                filled: true,
+                fillColor: _bg,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
               ),
             ),
           ),
@@ -672,6 +741,7 @@ class _ManageCategoryScreenState extends State<ManageCategoryScreen> {
     return await showDialog<bool>(
           context: context,
           builder: (_) => AlertDialog(
+            insetPadding: _dialogInset,
             title: Text(
               title,
               style: const TextStyle(
