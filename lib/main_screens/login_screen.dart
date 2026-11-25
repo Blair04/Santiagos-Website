@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,7 +15,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // Original Santiago's Furniture theme
   static const Color _background = Color(0xFFD8C9BC);
   static const Color _cream = Color(0xFFF7F4F1);
   static const Color _darkBrown = Color(0xFF4B3525);
@@ -34,7 +35,6 @@ class _LoginScreenState extends State<LoginScreen> {
     _checkSavedSession();
   }
 
-  // Check if the manager is already logged in.
   Future<void> _checkSavedSession() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -52,7 +52,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // Supabase Auth login functionality.
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -139,34 +138,29 @@ class _LoginScreenState extends State<LoginScreen> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final bool isDesktop =
-              constraints.maxWidth >= 780 && constraints.maxHeight >= 450;
+              constraints.maxWidth >= 900 && constraints.maxHeight >= 450;
 
           if (isDesktop) {
             return _buildDesktopLayout(constraints);
           }
 
-          return _buildMobileLayout();
+          return _buildMobileLayout(constraints); 
         },
       ),
     );
   }
-
-  // DESKTOP LOGIN LAYOUT
-  // Large curved circular area on the left, login form on right.
 
   Widget _buildDesktopLayout(BoxConstraints constraints) {
     final width = constraints.maxWidth;
 
     return Stack(
       children: [
-        // Entire background uses the original light brown theme.
         Positioned.fill(
           child: Container(
             color: _background,
           ),
         ),
 
-        // Large cream circular/curved area on the left.
         Positioned.fill(
           child: PhysicalShape(
             clipper: _LoginCircleClipper(),
@@ -177,7 +171,6 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
 
-        // Santiago's Furniture logo centered in the left area.
         Positioned(
           left: width * 0.075,
           width: width * 0.43,
@@ -188,7 +181,6 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
 
-        // Login form on the right side.
         Positioned(
           left: width * 0.575,
           right: width * 0.065,
@@ -213,43 +205,66 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildMobileLayout() {
+  Widget _buildMobileLayout(BoxConstraints constraints) {
+    final double width = constraints.maxWidth;
+    final double height = constraints.maxHeight;
+
+    final bool isShort = height < 560; 
+    final bool isTablet = width >= 600;
+
+    final double logoSize = isShort
+        ? 130
+        : math.min(math.max(width * 0.55, 160.0), isTablet ? 280.0 : 240.0);
+    final double horizontalPadding = isTablet ? 40 : 28;
+
     return Container(
       color: _background,
       child: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              const SizedBox(height: 25),
-
-              // Circular logo area.
-              Container(
-                width: 220,
-                height: 220,
-                decoration: const BoxDecoration(
-                  color: _cream,
-                  shape: BoxShape.circle,
+        child: LayoutBuilder(
+          builder: (context, safeConstraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: safeConstraints.maxHeight,
                 ),
-                padding: const EdgeInsets.all(28),
                 child: Center(
-                  child: _buildLogo(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(height: isShort ? 16 : 25),
+                      Container(
+                        width: logoSize,
+                        height: logoSize,
+                        decoration: const BoxDecoration(
+                          color: _cream,
+                          shape: BoxShape.circle,
+                        ),
+                        padding: EdgeInsets.all(logoSize * 0.127),
+                        child: Center(
+                          child: _buildLogo(),
+                        ),
+                      ),
+
+                      SizedBox(height: isShort ? 12 : 25),
+
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: horizontalPadding,
+                          vertical: 20,
+                        ),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 440),
+                          child: _buildLoginForm(),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+                    ],
+                  ),
                 ),
               ),
-
-              const SizedBox(height: 25),
-
-              // Login form.
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 28,
-                  vertical: 20,
-                ),
-                child: _buildLoginForm(),
-              ),
-
-              const SizedBox(height: 20),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -296,7 +311,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
         const SizedBox(height: 30),
 
-        // EMAIL
         const Text(
           'Email',
           style: TextStyle(
@@ -328,7 +342,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
         const SizedBox(height: 20),
 
-        // PASSWORD
         const Text(
           'Password',
           style: TextStyle(
@@ -379,7 +392,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
         const SizedBox(height: 5),
 
-        // FORGOT PASSWORD
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(
@@ -410,7 +422,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
         const SizedBox(height: 16),
 
-        // LOGIN BUTTON
         SizedBox(
           width: double.infinity,
           height: 48,
