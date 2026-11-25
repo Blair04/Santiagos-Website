@@ -146,6 +146,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static const Color _mutedOrange = Color(0xFFF0AD4E);
 
   final SupabaseClient _supabase = Supabase.instance.client;
+  final ScrollController _receiptsScrollController = ScrollController(); // NEW
 
   DashboardData? _dashboardData;
   Object? _loadError;
@@ -203,6 +204,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    _receiptsScrollController.dispose(); // NEW
     final channel = _dashboardRealtimeChannel;
     if (channel != null) {
       _supabase.removeChannel(channel);
@@ -339,7 +341,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildHeader(viewportWidth),
-                      const SizedBox(height: 32),
+                      SizedBox(height: viewportWidth < 600 ? 24 : 32), // CHANGED
                       if (_isLoading && _dashboardData == null)
                         _buildLoadingState()
                       else if (_loadError != null && _dashboardData == null)
@@ -369,7 +371,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Text(
           '${_greetingFor(now)}, Manager!',
           style: TextStyle(
-            fontSize: isMobile ? 28 : 34,
+            fontSize: isMobile ? 26 : 34, // CHANGED
             fontWeight: FontWeight.w800,
             letterSpacing: -0.5,
             color: _ink,
@@ -379,7 +381,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Text(
           'Here’s an overview of Santiago’s Furniture.',
           style: TextStyle(
-            fontSize: 15,
+            fontSize: isMobile ? 14 : 15, // CHANGED
             color: Colors.grey.shade600,
             fontWeight: FontWeight.w400,
           ),
@@ -387,10 +389,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ],
     );
 
-    final actions = Row(
-      mainAxisSize: MainAxisSize.min,
+    // CHANGED: Row -> Wrap so "Updated at" + refresh never overflow on phones.
+    final actions = Wrap(
+      spacing: 12,
+      runSpacing: 10,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        if (_lastUpdated != null) ...[
+        if (_lastUpdated != null)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
@@ -425,8 +430,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
-          const SizedBox(width: 12),
-        ],
         Tooltip(
           message: 'Refresh dashboard data',
           child: IconButton.filled(
@@ -651,9 +654,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final spacing = constraints.maxWidth < 600 ? 16.0 : 24.0;
-        // Three summary cards share one row on desktop/tablet widths.
-        // On narrow screens, cards stack or use two columns as space allows.
-        final columns = constraints.maxWidth >= 800 ? 3 : 1;
+        // Three summary cards share one row on laptop/wide-tablet widths.
+        // On phones and narrow tablets they stack in one column.
+        final columns = constraints.maxWidth >= 720 ? 3 : 1; // CHANGED
         final width =
             (constraints.maxWidth - spacing * (columns - 1)) / columns;
         return Wrap(
@@ -1188,9 +1191,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
               icon: Icons.receipt_long_outlined,
               message: 'No recent transactions are available.',
             )
-          else
-            SingleChildScrollView(
+          else ...[
+            if (MediaQuery.of(context).size.width < 700) // NEW: phone/tablet hint
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.swipe_rounded, size: 14, color: Colors.grey.shade500),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Swipe sideways to see more',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                    ),
+                  ],
+                ),
+              ),
+            Scrollbar(
+              controller: _receiptsScrollController,
+              thumbVisibility: true, // NEW: always-visible scroll indicator
+              trackVisibility: true,
+              child: SingleChildScrollView(
+              controller: _receiptsScrollController,
               scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(bottom: 14), // room for scrollbar
               child: DataTable(
                 showCheckboxColumn: false,
                 headingRowColor: WidgetStatePropertyAll(const Color(0xFFFBF8F5)),
@@ -1238,6 +1261,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 }).toList(),
               ),
             ),
+            ),
+          ],
         ],
       ),
     );
@@ -1449,9 +1474,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     ];
 
+    final bool isPhone = MediaQuery.of(context).size.width < 600; // NEW
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(isPhone ? 14 : 18), // CHANGED
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
@@ -1467,72 +1494,84 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Stock Overview',
-                      style: TextStyle(
-                        color: _ink,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      'Current inventory breakdown',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
+          // CHANGED: header adapts - shorter button label and no icon box on
+          // narrow widths so it never overflows.
+          LayoutBuilder(
+            builder: (context, headerConstraints) {
+              final bool narrow = headerConstraints.maxWidth < 520;
+              return Row(
                 children: [
-                  TextButton.icon(
-                    onPressed: widget.onViewProducts,
-                    icon: const Icon(Icons.arrow_outward_rounded, size: 16),
-                    label: const Text('View Stock'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF987044),
-                      textStyle: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 10,
-                      ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Stock Overview',
+                          style: TextStyle(
+                            color: _ink,
+                            fontSize: narrow ? 18 : 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          'Current inventory breakdown',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF6EDE3),
-                      borderRadius: BorderRadius.circular(13),
-                    ),
-                    child: const Icon(
-                      Icons.inventory_2_outlined,
-                      color: Color(0xFF987044),
-                      size: 25,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton.icon(
+                        onPressed: widget.onViewProducts,
+                        icon: const Icon(Icons.arrow_outward_rounded, size: 16),
+                        label: Text(narrow ? 'View' : 'View Stock'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF987044),
+                          textStyle: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
+                      if (!narrow) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF6EDE3),
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          child: const Icon(
+                            Icons.inventory_2_outlined,
+                            color: Color(0xFF987044),
+                            size: 25,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
-              ),
-            ],
+              );
+            },
           ),
           const SizedBox(height: 18),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            padding: EdgeInsets.symmetric(
+              horizontal: isPhone ? 14 : 18, // CHANGED
+              vertical: 12,
+            ),
             decoration: BoxDecoration(
               color: const Color(0xFFFBF8F5),
               borderRadius: BorderRadius.circular(16),
@@ -1567,9 +1606,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(width: 12),
                 Text(
                   _formatCount(data.totalStockCount),
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: _ink,
-                    fontSize: 29,
+                    fontSize: isPhone ? 24 : 29, // CHANGED
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
                   ),
@@ -1954,9 +1993,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required Widget child,
     Widget? trailing,
   }) {
+    // NEW: tighter padding on phones so charts/tables get more room.
+    final bool isPhone = MediaQuery.of(context).size.width < 600;
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(28),
+      padding: EdgeInsets.all(isPhone ? 18 : 28), // CHANGED
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
@@ -1997,7 +2039,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 24),
+          SizedBox(height: isPhone ? 18 : 24), // CHANGED
           child,
         ],
       ),
@@ -2881,14 +2923,20 @@ class _WeeklyActivityChart extends StatelessWidget {
                     '${_dayNames[activity[index].date.weekday - 1]}, ${activity[index].count} completed slips, earned ${activity[index].amount.toStringAsFixed(2)} pesos',
                 child: Column(
                   children: [
-                  Text(
-                    activity[index].amount >= 1000
-                        ? '₱${(activity[index].amount / 1000).toStringAsFixed(1)}k'
-                        : '₱${activity[index].amount.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                      color: Color(0xFF7A6865),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                  // CHANGED: FittedBox so the amount label shrinks instead of
+                  // overflowing on narrow phone columns.
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      activity[index].amount >= 1000
+                          ? '₱${(activity[index].amount / 1000).toStringAsFixed(1)}k'
+                          : '₱${activity[index].amount.toStringAsFixed(0)}',
+                      maxLines: 1,
+                      style: const TextStyle(
+                        color: Color(0xFF7A6865),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -2956,7 +3004,11 @@ class _WeeklyRevenueChart extends StatelessWidget {
           Expanded(
             child: Column(
               children: [
-                Text(activity[i].amount.toStringAsFixed(0), style: const TextStyle(color: Color(0xFF7A6865), fontSize: 10, fontWeight: FontWeight.w700)),
+                // CHANGED: FittedBox for narrow screens.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(activity[i].amount.toStringAsFixed(0), maxLines: 1, style: const TextStyle(color: Color(0xFF7A6865), fontSize: 10, fontWeight: FontWeight.w700)),
+                ),
                 const SizedBox(height: 8),
                 Expanded(
                   child: LayoutBuilder(builder: (context, constraints) {
@@ -2965,7 +3017,10 @@ class _WeeklyRevenueChart extends StatelessWidget {
                       alignment: Alignment.bottomCenter,
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 300),
-                        width: 24,
+                        // CHANGED: bar narrows on very small columns.
+                        width: constraints.maxWidth < 28
+                            ? constraints.maxWidth * 0.55
+                            : 24,
                         height: math.max(6, constraints.maxHeight * factor),
                         decoration: BoxDecoration(
                           color: i == activity.length - 1 ? const Color(0xFF438A5E) : const Color(0xFFBBD4C2),
