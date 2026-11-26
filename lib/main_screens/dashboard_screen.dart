@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'insights_service.dart';
+import 'ai_insights_section.dart';
 
 const int _lowStockThreshold = 1;
 
@@ -146,6 +148,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   RealtimeChannel? _dashboardRealtimeChannel;
   bool _realtimeRefreshInProgress = false;
   bool _realtimeRefreshPending = false;
+  InsightsResult? _insights;
 
   @override
   void initState() {
@@ -258,9 +261,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         
       );
 
+      final insights = InsightsService.analyze(
+      preorderRows: _asRows(responses[0]),
+      preorderItemRows: _asRows(responses[3]),
+      stockByName: {
+        for (final p in data.productStock) p.furnitureName: p.stockLeft,
+      },
+      );
+
       if (!mounted) return;
       setState(() {
         _dashboardData = data;
+        _insights = insights;
         _loadError = null;
         _lastUpdated = DateTime.now();
         _isLoading = false;
@@ -527,6 +539,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
         _buildSummaryGrid(data),
         const SizedBox(height: 24),
+        if (_insights != null) ...[
+        AiInsightsSection(insights: _insights!),
+        const SizedBox(height: 24),
+        ],
         _buildStockOverviewSection(data),
         const SizedBox(height: 24),
         _buildResponsivePair(
